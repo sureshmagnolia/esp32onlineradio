@@ -85,7 +85,7 @@ int lastTimerTriggerDay = -1;
 bool alarmActivePlaying = false;
 uint32_t alarmAutoOffExpiryMs = 0;
 
-// Active UI Screen Tab (0: Now Playing, 1: Stations, 2: Alarm Timer)
+// Active UI Screen Tab (0: Now Playing, 1: Stations, 2: Wi-Fi, 3: Alarm Timer)
 int activeTab = 0;
 
 // Alarm editing variables
@@ -96,6 +96,20 @@ int edit_timer_dur_idx = 1;
 static const int PRESET_DURATIONS[] = {15, 30, 45, 60, 90, 120, 0};
 static const char* PRESET_DURATION_LABELS[] = {"15 min", "30 min", "45 min", "60 min", "90 min", "120 min", "Contin."};
 static const int NUM_PRESET_DURATIONS = 7;
+
+// Wi-Fi Scanner & Keyboard State
+struct ScannedNet {
+    String ssid;
+    int rssi;
+    bool enc;
+};
+std::vector<ScannedNet> scannedNetworks;
+bool isScanningWiFi = false;
+bool isEnteringWiFiPass = false;
+String selectedWiFiSSID = "";
+String inputWiFiPass = "";
+int kbMode = 0; // 0: Lowercase, 1: Uppercase, 2: Numbers/Symbols
+String wifiStatusMsg = "";
 
 // Forward Declarations
 void loadSavedSettings();
@@ -112,6 +126,9 @@ void applyCategoryFilter(CategoryType cType, const char* filterVal);
 void playCurrentStation();
 void playStationByFilterIndex(int filterIdx);
 void drawFullUI();
+void drawClockOnly();
+void scanWiFiNetworks();
+void connectToSelectedWiFi();
 
 // Audio Status Callback
 void audio_msg_handler(Audio::msg_t m) {
@@ -440,6 +457,66 @@ bool initWiFi() {
     return false;
 }
 
+void scanWiFiNetworks() {
+    isScanningWiFi = true;
+    uiNeedsUpdate = true;
+    drawFullUI();
+
+    scannedNetworks.clear();
+    int n = WiFi.scanNetworks(false, true);
+    for (int i = 0; i < n; i++) {
+        ScannedNet net;
+        net.ssid = WiFi.SSID(i);
+        net.rssi = WiFi.RSSI(i);
+        net.enc = (WiFi.encryptionType(i) != WIFI_AUTH_OPEN);
+        if (net.ssid.length() > 0) {
+            // Avoid duplicates
+            bool exists = false;
+            for (auto& s : scannedNetworks) {
+                if (s.ssid == net.ssid) { exists = true; break; }
+            }
+            if (!exists) scannedNetworks.push_back(net);
+        }
+    }
+    WiFi.scanDelete();
+    isScanningWiFi = false;
+    uiNeedsUpdate = true;
+}
+
+void connectToSelectedWiFi() {
+    wifiStatusMsg = "Connecting...";
+    uiNeedsUpdate = true;
+    drawFullUI();
+
+    WiFi.disconnect(true, true);
+    delay(100);
+    WiFi.begin(selectedWiFiSSID.c_str(), inputWiFiPass.c_str());
+
+    int timeout = 0;
+    while (WiFi.status() != WL_CONNECTED && timeout < 30) {
+        delay(500);
+        timeout++;
+    }
+
+    if (WiFi.status() == WL_CONNECTED) {
+        currentSSID = selectedWiFiSSID;
+        currentPass = inputWiFiPass;
+        prefs.begin("air_radio", false);
+        prefs.putString("wifi_ssid", currentSSID);
+        prefs.putString("wifi_pass", currentPass);
+        prefs.end();
+
+        wifiStatusMsg = "Connected: " + WiFi.localIP().toString();
+        configTime(gmtOffset_sec, daylightOffset_sec, ntpServer, "time.nist.gov");
+        setupWebServer();
+        isEnteringWiFiPass = false;
+        playCurrentStation();
+    } else {
+        wifiStatusMsg = "Failed to connect. Try again.";
+    }
+    uiNeedsUpdate = true;
+}
+
 // -----------------------------------------------------------------------------
 // Web Remote (esp_http_server)
 // -----------------------------------------------------------------------------
@@ -534,21 +611,19 @@ void setupWebServer() {
 // M5GFX Hardware Display UI (320 x 240)
 // -----------------------------------------------------------------------------
 void drawHeader() {
-    M5.Display.fillRect(0, 0, 320, 26, 0x18C3); // Dark slate header
+    M5.Display.fillRect(0, 0, 320, 26, 0x18C3);
     M5.Display.setTextDatum(top_left);
-    M5.Display.setTextColor(0x07FF, 0x18C3); // Cyan
+    M5.Display.setTextColor(0x07FF, 0x18C3);
     M5.Display.setFont(&fonts::Font0);
     M5.Display.setTextSize(1);
 
-    // Wi-Fi info
     if (WiFi.status() == WL_CONNECTED) {
         M5.Display.drawString(WiFi.localIP().toString(), 6, 8);
     } else {
-        M5.Display.setTextColor(0xF800, 0x18C3); // Red
+        M5.Display.setTextColor(0xF800, 0x18C3);
         M5.Display.drawString("NO WI-FI", 6, 8);
     }
 
-    // Battery & Charging
     int bat = M5.Power.getBatteryLevel();
     bool chg = M5.Power.isCharging();
     char batBuf[16];
@@ -559,21 +634,48 @@ void drawHeader() {
 }
 
 void drawBottomBar() {
-    M5.Display.fillRect(0, 196, 320, 44, 0x10A2); // Bottom bar
+    M5.Display.fillRect(0, 196, 320, 44, 0x10A2);
 
-    // Tab buttons: [ Radio ] [ List ] [ Timer ]
-    M5.Display.fillRoundRect(6, 202, 98, 32, 6, (activeTab == 0) ? 0x07FF : 0x2124);
-    M5.Display.setTextColor((activeTab == 0) ? 0x0000 : 0xFFFF);
+    // 3 Tabs: [ Radio ] [ Stations ] [ Wi-Fi ]
+    int tabW = 98;
+    const char* tabs[3] = {"Radio", "Stations", "Wi-Fi"};
+    int tabX[3] = {6, 111, 216};
+    for (int i = 0; i < 3; i++) {
+        int x = tabX[i];
+        bool isAct = (activeTab == i);
+        M5.Display.fillRoundRect(x, 202, tabW, 32, 6, isAct ? 0x07FF : 0x2124);
+        M5.Display.setTextColor(isAct ? 0x0000 : 0xFFFF);
+        M5.Display.setTextDatum(middle_center);
+        M5.Display.drawString(tabs[i], x + (tabW / 2), 218);
+    }
+}
+
+// Precise, flicker-free clock drawing (updates ONLY the time string rectangle)
+void drawClockOnly() {
+    if (activeTab != 0) return;
+    time_t now;
+    struct tm timeinfo;
+    time(&now);
+    localtime_r(&now, &timeinfo);
+    if (timeinfo.tm_year < (2020 - 1900)) return;
+
+    int dispH = timeinfo.tm_hour;
+    const char* ampm = "AM";
+    if (dispH >= 12) {
+        ampm = "PM";
+        if (dispH > 12) dispH -= 12;
+    }
+    if (dispH == 0) dispH = 12;
+
+    char clockBuf[32];
+    snprintf(clockBuf, sizeof(clockBuf), "%02d:%02d:%02d %s", dispH, timeinfo.tm_min, timeinfo.tm_sec, ampm);
+
+    // Clear ONLY the clock text bounding box
+    M5.Display.fillRect(60, 96, 200, 24, 0x0841);
+    M5.Display.setTextColor(0xFFFF, 0x0841);
+    M5.Display.setFont(&fonts::Font2);
     M5.Display.setTextDatum(middle_center);
-    M5.Display.drawString("Now Playing", 55, 218);
-
-    M5.Display.fillRoundRect(111, 202, 98, 32, 6, (activeTab == 1) ? 0x07FF : 0x2124);
-    M5.Display.setTextColor((activeTab == 1) ? 0x0000 : 0xFFFF);
-    M5.Display.drawString("Stations", 160, 218);
-
-    M5.Display.fillRoundRect(216, 202, 98, 32, 6, (activeTab == 2) ? 0x07FF : 0x2124);
-    M5.Display.setTextColor((activeTab == 2) ? 0x0000 : 0xFFFF);
-    M5.Display.drawString("Alarm", 265, 218);
+    M5.Display.drawString(clockBuf, 160, 108);
 }
 
 void drawNowPlayingTab() {
@@ -585,7 +687,7 @@ void drawNowPlayingTab() {
 
     // 1. Station Name Box
     M5.Display.fillRoundRect(8, 32, 304, 60, 8, 0x18E3);
-    M5.Display.setTextColor(0xFFE0); // Gold
+    M5.Display.setTextColor(0xFFE0);
     M5.Display.setTextDatum(middle_center);
     M5.Display.setFont(&fonts::Font2);
     M5.Display.setTextSize(1);
@@ -595,7 +697,7 @@ void drawNowPlayingTab() {
     M5.Display.setFont(&fonts::Font0);
     char badgeBuf[64];
     snprintf(badgeBuf, sizeof(badgeBuf), "[ %s ]  [ %s ]", st.language.c_str(), st.state.c_str());
-    M5.Display.setTextColor(0x07FF); // Cyan
+    M5.Display.setTextColor(0x07FF);
     M5.Display.drawString(badgeBuf, 160, 74);
 
     // 2. Clock & Date Display
@@ -691,6 +793,137 @@ void drawStationsTab() {
     M5.Display.drawString("Next Page >", 238, 182);
 }
 
+// -----------------------------------------------------------------------------
+// Wi-Fi Tab (Network List & Touch Keyboard)
+// -----------------------------------------------------------------------------
+void drawWiFiTab() {
+    M5.Display.fillRect(0, 26, 320, 170, 0x0841);
+
+    if (isEnteringWiFiPass) {
+        // --- KEYBOARD VIEW ---
+        // Header info: SSID and Password display
+        M5.Display.fillRoundRect(8, 30, 304, 28, 4, 0x18E3);
+        M5.Display.setTextColor(0xFFE0);
+        M5.Display.setTextDatum(middle_left);
+        String ssidStr = "SSID: " + selectedWiFiSSID;
+        if (ssidStr.length() > 22) ssidStr = ssidStr.substring(0, 20) + "..";
+        M5.Display.drawString(ssidStr, 14, 44);
+
+        // Cancel and Connect buttons at top
+        M5.Display.fillRoundRect(200, 32, 52, 24, 4, 0x7BEF);
+        M5.Display.setTextColor(0x0000);
+        M5.Display.setTextDatum(middle_center);
+        M5.Display.drawString("Back", 226, 44);
+
+        M5.Display.fillRoundRect(256, 32, 52, 24, 4, 0x07E0);
+        M5.Display.drawString("Join", 282, 44);
+
+        // Password input field
+        M5.Display.fillRoundRect(8, 62, 304, 26, 4, 0x10A2);
+        M5.Display.setTextColor(0x07FF);
+        M5.Display.setTextDatum(middle_left);
+        String passDisp = "Pass: " + inputWiFiPass + "_";
+        M5.Display.drawString(passDisp, 14, 75);
+
+        // Touch Keyboard (4 Rows)
+        // Mode 0: Lowercase, Mode 1: Uppercase, Mode 2: Numbers & Symbols
+        const char* r1 = (kbMode == 1) ? "QWERTYUIOP" : (kbMode == 2 ? "1234567890" : "qwertyuiop");
+        const char* r2 = (kbMode == 1) ? "ASDFGHJKL"  : (kbMode == 2 ? "@#$%-+()/" : "asdfghjkl");
+        const char* r3 = (kbMode == 1) ? "ZXCVBNM"    : (kbMode == 2 ? "!?:;,.=_"  : "zxcvbnm");
+
+        // Row 1 (10 keys)
+        for (int i = 0; i < 10; i++) {
+            int kx = 6 + (i * 31);
+            M5.Display.fillRoundRect(kx, 92, 28, 22, 3, 0x2124);
+            M5.Display.setTextColor(0xFFFF);
+            M5.Display.setTextDatum(middle_center);
+            char c[2] = { r1[i], 0 };
+            M5.Display.drawString(c, kx + 14, 103);
+        }
+
+        // Row 2 (9 keys)
+        for (int i = 0; i < 9; i++) {
+            int kx = 21 + (i * 31);
+            M5.Display.fillRoundRect(kx, 117, 28, 22, 3, 0x2124);
+            M5.Display.setTextColor(0xFFFF);
+            M5.Display.setTextDatum(middle_center);
+            char c[2] = { r2[i], 0 };
+            M5.Display.drawString(c, kx + 14, 128);
+        }
+
+        // Row 3 (Shift/123 toggle, 7 keys, Backspace)
+        // Toggle key [ABC / 123]
+        M5.Display.fillRoundRect(6, 142, 42, 22, 3, 0x2945);
+        M5.Display.setTextColor(0xFFE0);
+        M5.Display.drawString(kbMode == 2 ? "ABC" : "123", 27, 153);
+
+        for (int i = 0; i < 7; i++) {
+            int kx = 52 + (i * 31);
+            M5.Display.fillRoundRect(kx, 142, 28, 22, 3, 0x2124);
+            M5.Display.setTextColor(0xFFFF);
+            M5.Display.setTextDatum(middle_center);
+            char c[2] = { r3[i], 0 };
+            M5.Display.drawString(c, kx + 14, 153);
+        }
+
+        // Backspace key
+        M5.Display.fillRoundRect(272, 142, 42, 22, 3, 0xF800);
+        M5.Display.setTextColor(0xFFFF);
+        M5.Display.drawString("DEL", 293, 153);
+
+        // Row 4 (Spacebar)
+        M5.Display.fillRoundRect(80, 168, 160, 22, 3, 0x2124);
+        M5.Display.setTextColor(0xFFFF);
+        M5.Display.drawString("SPACE", 160, 179);
+
+    } else {
+        // --- SCAN / NETWORK LIST VIEW ---
+        M5.Display.setTextColor(0xFFE0);
+        M5.Display.setTextDatum(middle_left);
+        String curText = (WiFi.status() == WL_CONNECTED) ? ("Active: " + WiFi.SSID()) : "Not connected";
+        if (curText.length() > 24) curText = curText.substring(0, 22) + "..";
+        M5.Display.drawString(curText, 10, 42);
+
+        // Scan button
+        M5.Display.fillRoundRect(220, 30, 92, 26, 4, isScanningWiFi ? 0x7BEF : 0x07FF);
+        M5.Display.setTextColor(0x0000);
+        M5.Display.setTextDatum(middle_center);
+        M5.Display.drawString(isScanningWiFi ? "Scanning.." : "Scan Wi-Fi", 266, 43);
+
+        // Status message
+        if (wifiStatusMsg.length() > 0) {
+            M5.Display.setTextColor(0x07E0);
+            M5.Display.setTextDatum(middle_center);
+            M5.Display.drawString(wifiStatusMsg, 160, 64);
+        }
+
+        // Up to 4 Scanned Networks
+        if (scannedNetworks.empty()) {
+            M5.Display.setTextColor(0x9CD3);
+            M5.Display.setTextDatum(middle_center);
+            M5.Display.drawString("Tap 'Scan Wi-Fi' to discover networks", 160, 110);
+        } else {
+            int maxShow = scannedNetworks.size() > 4 ? 4 : scannedNetworks.size();
+            for (int i = 0; i < maxShow; i++) {
+                int y = 72 + (i * 28);
+                M5.Display.fillRoundRect(8, y, 304, 25, 4, 0x18E3);
+                M5.Display.setTextColor(0xFFFF);
+                M5.Display.setTextDatum(middle_left);
+                String sName = scannedNetworks[i].ssid;
+                if (sName.length() > 22) sName = sName.substring(0, 20) + "..";
+                M5.Display.drawString(sName, 16, y + 12);
+
+                // RSSI & lock
+                char rssiBuf[16];
+                snprintf(rssiBuf, sizeof(rssiBuf), "%d dBm %s", scannedNetworks[i].rssi, scannedNetworks[i].enc ? "*" : "");
+                M5.Display.setTextDatum(middle_right);
+                M5.Display.setTextColor(0x07FF);
+                M5.Display.drawString(rssiBuf, 304, y + 12);
+            }
+        }
+    }
+}
+
 void drawAlarmTab() {
     M5.Display.fillRect(0, 26, 320, 170, 0x0841);
 
@@ -760,7 +993,7 @@ void drawFullUI() {
     drawHeader();
     if (activeTab == 0) drawNowPlayingTab();
     else if (activeTab == 1) drawStationsTab();
-    else if (activeTab == 2) drawAlarmTab();
+    else if (activeTab == 2) drawWiFiTab();
     drawBottomBar();
 }
 
@@ -789,14 +1022,18 @@ void handleTouchAndButtons() {
     int x = t.x;
     int y = t.y;
 
+    // Bottom Navigation Bar (3 tabs: [Radio] [Stations] [Wi-Fi])
     if (y >= 196) {
-        if (x < 105) activeTab = 0;
-        else if (x < 210) activeTab = 1;
-        else activeTab = 2;
-        uiNeedsUpdate = true;
+        int clickedTab = (x < 107) ? 0 : ((x < 213) ? 1 : 2);
+        if (activeTab != clickedTab || isEnteringWiFiPass) {
+            activeTab = clickedTab;
+            isEnteringWiFiPass = false;
+            uiNeedsUpdate = true;
+        }
         return;
     }
 
+    // Tab 0: Now Playing Touch Actions
     if (activeTab == 0) {
         if (y >= 145 && y <= 185) {
             if (x >= 8 && x <= 60) playStationByFilterIndex(currentFilterPosition - 1);
@@ -805,7 +1042,9 @@ void handleTouchAndButtons() {
             else if (x >= 210 && x <= 258) setSystemVolume(currentVolume - 1);
             else if (x >= 264 && x <= 312) setSystemVolume(currentVolume + 1);
         }
-    } else if (activeTab == 1) {
+    }
+    // Tab 1: Stations List Touch Actions
+    else if (activeTab == 1) {
         for (int i = 0; i < STATIONS_PER_PAGE; i++) {
             int rowY = 56 + (i * 28);
             if (y >= rowY && y <= rowY + 25) {
@@ -830,7 +1069,77 @@ void handleTouchAndButtons() {
                 uiNeedsUpdate = true;
             }
         }
-    } else if (activeTab == 2) {
+    }
+    // Tab 2: Wi-Fi Setup Touch Actions
+    else if (activeTab == 2) {
+        if (isEnteringWiFiPass) {
+            // Cancel button
+            if (y >= 30 && y <= 56 && x >= 200 && x <= 252) {
+                isEnteringWiFiPass = false;
+                uiNeedsUpdate = true;
+                return;
+            }
+            // Connect button
+            if (y >= 30 && y <= 56 && x >= 256 && x <= 312) {
+                connectToSelectedWiFi();
+                return;
+            }
+            // Keyboard Row 1 (y: 92..114)
+            const char* r1 = (kbMode == 1) ? "QWERTYUIOP" : (kbMode == 2 ? "1234567890" : "qwertyuiop");
+            const char* r2 = (kbMode == 1) ? "ASDFGHJKL"  : (kbMode == 2 ? "@#$%-+()/" : "asdfghjkl");
+            const char* r3 = (kbMode == 1) ? "ZXCVBNM"    : (kbMode == 2 ? "!?:;,.=_"  : "zxcvbnm");
+
+            if (y >= 92 && y <= 114) {
+                int col = (x - 6) / 31;
+                if (col >= 0 && col < 10) { inputWiFiPass += r1[col]; uiNeedsUpdate = true; }
+            }
+            // Keyboard Row 2 (y: 117..139)
+            else if (y >= 117 && y <= 139) {
+                int col = (x - 21) / 31;
+                if (col >= 0 && col < 9) { inputWiFiPass += r2[col]; uiNeedsUpdate = true; }
+            }
+            // Keyboard Row 3 (y: 142..164)
+            else if (y >= 142 && y <= 164) {
+                if (x >= 6 && x <= 48) { // Toggle Mode
+                    kbMode = (kbMode == 0) ? 2 : 0;
+                    uiNeedsUpdate = true;
+                } else if (x >= 272 && x <= 314) { // Backspace
+                    if (inputWiFiPass.length() > 0) {
+                        inputWiFiPass.remove(inputWiFiPass.length() - 1);
+                        uiNeedsUpdate = true;
+                    }
+                } else {
+                    int col = (x - 52) / 31;
+                    if (col >= 0 && col < 7) { inputWiFiPass += r3[col]; uiNeedsUpdate = true; }
+                }
+            }
+            // Keyboard Row 4 (Spacebar, y: 168..190)
+            else if (y >= 168 && y <= 190) {
+                if (x >= 80 && x <= 240) { inputWiFiPass += ' '; uiNeedsUpdate = true; }
+            }
+        } else {
+            // Scan Button
+            if (y >= 30 && y <= 56 && x >= 220 && x <= 312) {
+                scanWiFiNetworks();
+                return;
+            }
+            // Select Scanned Network
+            int maxShow = scannedNetworks.size() > 4 ? 4 : scannedNetworks.size();
+            for (int i = 0; i < maxShow; i++) {
+                int rowY = 72 + (i * 28);
+                if (y >= rowY && y <= rowY + 25) {
+                    selectedWiFiSSID = scannedNetworks[i].ssid;
+                    inputWiFiPass = "";
+                    isEnteringWiFiPass = true;
+                    kbMode = 0;
+                    uiNeedsUpdate = true;
+                    return;
+                }
+            }
+        }
+    }
+    // Tab 3: Alarm Touch Actions
+    else if (activeTab == 3) {
         if (y >= 36 && y <= 68) {
             edit_timer_en = !edit_timer_en;
             uiNeedsUpdate = true;
@@ -901,7 +1210,7 @@ void setup() {
         setupWebServer();
         playCurrentStation();
     } else {
-        M5.Display.drawString("Wi-Fi Failed. Check settings.", 160, 100);
+        M5.Display.drawString("Wi-Fi Failed. Tap Wi-Fi tab to set.", 160, 100);
         delay(2000);
     }
     uiNeedsUpdate = true;
@@ -932,17 +1241,17 @@ void loop() {
         pendingWebAction = ACT_NONE;
     }
 
+    // 1-Second Timer: ONLY update clock text in-place (Flicker-Free!)
     static uint32_t lastTimerCheck = 0;
     if (millis() - lastTimerCheck >= 1000) {
         lastTimerCheck = millis();
         checkAutoOnTimer();
         if (activeTab == 0) {
-            drawHeader();
-            drawNowPlayingTab();
-            drawBottomBar();
+            drawClockOnly(); // Ultra-fast, zero-flicker partial redraw!
         }
     }
 
+    // Full UI Redraw ONLY when needed (e.g. tab changed, station changed)
     if (uiNeedsUpdate) {
         uiNeedsUpdate = false;
         drawFullUI();
