@@ -1,0 +1,114 @@
+const char PAGE_INDEX[] = R"rawliteral(<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Radio Remote</title>
+<style>
+body{font-family:-apple-system,BlinkMacSystemFont,Roboto,sans-serif;background:#0d1117;color:#c9d1d9;margin:0;padding:12px;text-align:center;}
+.box{background:#161b22;border:1px solid #30363d;border-radius:10px;padding:14px;margin:0 auto 12px;max-width:440px;box-sizing:border-box;}
+h2{margin:2px 0 10px;color:#58a6ff;font-size:18px;}
+h3{margin:4px 0 6px;color:#f0f6fc;font-size:17px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.sub{color:#8b949e;font-size:13px;margin-bottom:12px;}
+.badge{display:inline-block;padding:3px 8px;border-radius:12px;font-size:11px;font-weight:bold;margin-bottom:6px;}
+.badge-live{background:#238636;color:#fff;}
+.badge-buf{background:#d29922;color:#000;}
+.badge-pause{background:#30363d;color:#8b949e;}
+.row{display:flex;justify-content:center;align-items:center;gap:8px;margin:10px 0;}
+.btn{background:#21262d;color:#c9d1d9;border:1px solid #30363d;padding:10px 16px;border-radius:6px;font-size:14px;font-weight:600;cursor:pointer;touch-action:manipulation;}
+.btn:active{background:#30363d;}
+.btn-blue{background:#1f6feb;color:#fff;border-color:#388bfd;}
+.btn-green{background:#238636;color:#fff;border-color:#2ea043;}
+select,input[type=text],input[type=password],input[type=url]{width:100%;box-sizing:border-box;padding:9px;margin:6px 0;background:#0d1117;color:#f0f6fc;border:1px solid #30363d;border-radius:6px;font-size:14px;}
+#toast{position:fixed;top:12px;left:50%;transform:translateX(-50%);background:#58a6ff;color:#0d1117;padding:6px 14px;border-radius:20px;font-weight:bold;font-size:13px;display:none;z-index:99;box-shadow:0 4px 12px rgba(0,0,0,0.5);}
+</style>
+</head>
+<body>
+<div id="toast"></div>
+
+<div class="box">
+  <h2>📻 ESP32 Radio Remote</h2>
+  <div id="t_badge" class="badge badge-live">[ LIVE ]</div>
+  <h3 id="t_name">Akashvani Radio</h3>
+  <div class="sub" id="t_meta">Live Broadcast</div>
+  
+  <div class="row">
+    <button class="btn" onclick="sendCmd('prev','⏮ Prev')">⏮ Prev</button>
+    <button class="btn btn-blue" id="b_play" onclick="sendCmd('play_pause','Play/Pause')">⏸ Pause</button>
+    <button class="btn" onclick="sendCmd('next','Next ⏭')">Next ⏭</button>
+  </div>
+  
+  <div class="row" style="margin-top:14px;">
+    <button class="btn" id="b_mute" onclick="sendCmd('mute','Mute')">🔊 Mute</button>
+    <input type="range" id="v_slider" min="0" max="21" value="21" style="flex:1;" oninput="sendVol(this.value)">
+    <span id="v_val" style="min-width:42px;font-weight:bold;color:#58a6ff;font-size:13px;">100%</span>
+  </div>
+</div>
+
+<div class="box">
+  <div style="font-weight:600;color:#ffd54f;margin-bottom:6px;text-align:left;">📻 Choose Station (276+)</div>
+  <select id="st_sel" onchange="playSelected(this.value)"></select>
+  <button class="btn btn-green" style="width:100%;margin-top:6px;" onclick="playSelected(document.getElementById('st_sel').value)">▶ Play Selected Station</button>
+</div>
+
+<div class="box">
+  <div style="font-weight:600;color:#ffd54f;margin-bottom:6px;text-align:left;">➕ Add Custom Station</div>
+  <form method="POST" action="/add_station">
+    <input type="text" name="name" placeholder="Station Name (e.g. Club FM)" required>
+    <input type="url" name="url" placeholder="Stream URL (http://...)" required>
+    <input type="text" name="state" placeholder="State (e.g. Kerala)">
+    <input type="text" name="lang" placeholder="Language (e.g. Malayalam)">
+    <button type="submit" class="btn btn-blue" style="width:100%;margin-top:6px;">➕ Save Station</button>
+  </form>
+</div>
+
+<div class="box">
+  <div style="font-weight:600;color:#ffd54f;margin-bottom:6px;text-align:left;">📶 Wi-Fi Settings</div>
+  <form method="POST" action="/save_wifi">
+    <input type="text" name="ssid" placeholder="Wi-Fi SSID" required>
+    <input type="password" name="pass" placeholder="Password">
+    <button type="submit" class="btn" style="width:100%;margin-top:6px;background:#30363d;color:#fff;">💾 Save & Restart</button>
+  </form>
+</div>
+
+<script>
+let tTimer=null;
+function showToast(m){let e=document.getElementById('toast');e.innerText=m;e.style.display='block';if(tTimer)clearTimeout(tTimer);tTimer=setTimeout(()=>e.style.display='none',2000);}
+function sendCmd(a,msg){if(msg)showToast(msg);fetch('/api/cmd?action='+a).then(syncStatus).catch(()=>{});}
+function sendVol(v){document.getElementById('v_val').innerText=Math.round((v/21)*100)+'%';fetch('/api/cmd?action=vol&val='+v).catch(()=>{});}
+function playSelected(id){if(id==='')return;let sel=document.getElementById('st_sel');let name=sel.options[sel.selectedIndex].text;showToast('🎵 Playing '+name);fetch('/api/cmd?action=play&id='+id).then(syncStatus).catch(()=>{});}
+
+function syncStatus(){
+  fetch('/api/status').then(r=>r.json()).then(d=>{
+    document.getElementById('t_name').innerText=d.title||'Radio';
+    document.getElementById('t_meta').innerText=(d.state||'')+(d.lang?' • '+d.lang:'');
+    let b=document.getElementById('t_badge');
+    if(d.buffering){b.innerText='[ BUFFERING ]';b.className='badge badge-buf';}
+    else if(d.playing){b.innerText='[ LIVE ]';b.className='badge badge-live';}
+    else{b.innerText='[ PAUSED ]';b.className='badge badge-pause';}
+    document.getElementById('b_play').innerText=d.playing?'⏸ Pause':'▶ Play';
+    document.getElementById('v_slider').value=d.vol;
+    document.getElementById('v_val').innerText=d.muted?'MUTED':(Math.round((d.vol/21)*100)+'%');
+    document.getElementById('b_mute').innerText=d.muted?'🔇 Unmute':'🔊 Mute';
+  }).catch(()=>{});
+}
+
+function loadStations(){
+  fetch('/api/stations').then(r=>r.json()).then(list=>{
+    let s=document.getElementById('st_sel');
+    s.innerHTML='<option value="">-- Select Station ('+list.length+') --</option>';
+    list.forEach(i=>{
+      let o=document.createElement('option');
+      o.value=i.id;
+      o.innerText=i.name+(i.user?' ⭐':'')+' ('+i.state+' - '+i.lang+')';
+      s.appendChild(o);
+    });
+  }).catch(()=>{});
+}
+
+syncStatus();
+setTimeout(loadStations, 300);
+setInterval(syncStatus, 3000);
+</script>
+</body>
+</html>)rawliteral";

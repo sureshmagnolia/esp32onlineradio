@@ -1,0 +1,6 @@
+*.rar
+*.zip
+.pio/
+.vscode/
+*.bin
+*.elf
