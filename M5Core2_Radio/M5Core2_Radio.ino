@@ -85,8 +85,17 @@ int lastTimerTriggerDay = -1;
 bool alarmActivePlaying = false;
 uint32_t alarmAutoOffExpiryMs = 0;
 
-// Active UI Screen Tab (0: Now Playing, 1: Stations, 2: Wi-Fi, 3: Alarm Timer)
+// Active UI Screen Tab (0: Now Playing, 1: Stations, 2: Wi-Fi Setup)
 int activeTab = 0;
+
+enum StationViewMode {
+    STATION_VIEW_LIST = 0,
+    STATION_VIEW_PICK_LANG = 1,
+    STATION_VIEW_PICK_STATE = 2
+};
+StationViewMode stationViewMode = STATION_VIEW_LIST;
+int langPickerPage = 0;
+int statePickerPage = 0;
 
 // Alarm editing variables
 bool edit_timer_en = false;
@@ -755,42 +764,181 @@ void drawNowPlayingTab() {
 void drawStationsTab() {
     M5.Display.fillRect(0, 26, 320, 170, 0x0841);
 
-    int totalFiltered = filteredIndices.size();
-    int totalPages = (totalFiltered + STATIONS_PER_PAGE - 1) / STATIONS_PER_PAGE;
-    if (totalPages == 0) totalPages = 1;
+    if (stationViewMode == STATION_VIEW_PICK_LANG) {
+        // --- LANGUAGE PICKER VIEW ---
+        int totalPages = (TOTAL_LANGUAGES + 7) / 8;
+        
+        // Header
+        M5.Display.setTextColor(0xFFE0);
+        M5.Display.setTextDatum(middle_left);
+        M5.Display.setFont(&fonts::Font0);
+        char hBuf[32];
+        snprintf(hBuf, sizeof(hBuf), "Select Language (%d/%d)", langPickerPage + 1, totalPages);
+        M5.Display.drawString(hBuf, 10, 40);
 
-    M5.Display.setTextColor(0xFFE0);
-    M5.Display.setTextDatum(middle_left);
-    M5.Display.drawString("FILTER: " + activeFilterVal, 10, 40);
+        // Back button
+        M5.Display.fillRoundRect(244, 29, 68, 22, 4, 0x7BEF);
+        M5.Display.setTextColor(0x0000);
+        M5.Display.setTextDatum(middle_center);
+        M5.Display.drawString("Back", 278, 40);
 
-    M5.Display.setTextDatum(middle_right);
-    char pBuf[16];
-    snprintf(pBuf, sizeof(pBuf), "%d / %d", stationCurrentPage + 1, totalPages);
-    M5.Display.drawString(pBuf, 310, 40);
+        // 8 buttons grid (2 cols x 4 rows)
+        int startIdx = langPickerPage * 8;
+        for (int i = 0; i < 8; i++) {
+            int idx = startIdx + i;
+            if (idx < TOTAL_LANGUAGES) {
+                int col = i % 2;
+                int row = i / 2;
+                int x = 8 + (col * 156);
+                int y = 56 + (row * 27);
+                const char* lName = FILTER_LANGUAGES[idx];
+                bool isSel = (activeCatType == CAT_LANG && activeFilterVal == lName) ||
+                             (idx == 0 && activeCatType == CAT_ALL);
 
-    int startIdx = stationCurrentPage * STATIONS_PER_PAGE;
-    for (int i = 0; i < STATIONS_PER_PAGE; i++) {
-        int idx = startIdx + i;
-        int y = 56 + (i * 28);
-        if (idx < totalFiltered) {
-            int realIdx = filteredIndices[idx];
-            bool isCur = (idx == currentFilterPosition);
-            M5.Display.fillRoundRect(8, y, 304, 25, 4, isCur ? 0x07FF : 0x18E3);
-            M5.Display.setTextColor(isCur ? 0x0000 : 0xFFFF);
-            M5.Display.setTextDatum(middle_left);
-            String stText = runtimeStations[realIdx].name;
-            if (stText.length() > 28) stText = stText.substring(0, 26) + "..";
-            M5.Display.drawString(stText, 16, y + 12);
+                M5.Display.fillRoundRect(x, y, 148, 24, 4, isSel ? 0x07E0 : 0x18E3);
+                M5.Display.setTextColor(isSel ? 0x0000 : 0xFFFF);
+                M5.Display.setTextDatum(middle_center);
+                String disp = String(lName);
+                if (disp.length() > 14) disp = disp.substring(0, 12) + "..";
+                M5.Display.drawString(disp, x + 74, y + 12);
+            }
         }
+
+        // Bottom pagination row
+        M5.Display.fillRoundRect(8, 168, 96, 24, 4, 0x2124);
+        M5.Display.setTextColor(0xFFFF);
+        M5.Display.setTextDatum(middle_center);
+        M5.Display.drawString("< Prev", 56, 180);
+
+        M5.Display.fillRoundRect(112, 168, 96, 24, 4, 0x2945);
+        M5.Display.setTextColor(0xFFE0);
+        M5.Display.drawString("All Langs", 160, 180);
+
+        M5.Display.fillRoundRect(216, 168, 96, 24, 4, 0x2124);
+        M5.Display.setTextColor(0xFFFF);
+        M5.Display.drawString("Next >", 264, 180);
+
+    } else if (stationViewMode == STATION_VIEW_PICK_STATE) {
+        // --- STATE PICKER VIEW ---
+        int totalPages = (TOTAL_STATES + 7) / 8;
+        
+        // Header
+        M5.Display.setTextColor(0xFFE0);
+        M5.Display.setTextDatum(middle_left);
+        M5.Display.setFont(&fonts::Font0);
+        char hBuf[32];
+        snprintf(hBuf, sizeof(hBuf), "Select State (%d/%d)", statePickerPage + 1, totalPages);
+        M5.Display.drawString(hBuf, 10, 40);
+
+        // Back button
+        M5.Display.fillRoundRect(244, 29, 68, 22, 4, 0x7BEF);
+        M5.Display.setTextColor(0x0000);
+        M5.Display.setTextDatum(middle_center);
+        M5.Display.drawString("Back", 278, 40);
+
+        // 8 buttons grid (2 cols x 4 rows)
+        int startIdx = statePickerPage * 8;
+        for (int i = 0; i < 8; i++) {
+            int idx = startIdx + i;
+            if (idx < TOTAL_STATES) {
+                int col = i % 2;
+                int row = i / 2;
+                int x = 8 + (col * 156);
+                int y = 56 + (row * 27);
+                const char* sName = FILTER_STATES[idx];
+                bool isSel = (activeCatType == CAT_STATE && activeFilterVal == sName) ||
+                             (idx == 0 && activeCatType == CAT_ALL);
+
+                M5.Display.fillRoundRect(x, y, 148, 24, 4, isSel ? 0x07E0 : 0x18E3);
+                M5.Display.setTextColor(isSel ? 0x0000 : 0xFFFF);
+                M5.Display.setTextDatum(middle_center);
+                String disp = String(sName);
+                if (disp.length() > 14) disp = disp.substring(0, 12) + "..";
+                M5.Display.drawString(disp, x + 74, y + 12);
+            }
+        }
+
+        // Bottom pagination row
+        M5.Display.fillRoundRect(8, 168, 96, 24, 4, 0x2124);
+        M5.Display.setTextColor(0xFFFF);
+        M5.Display.setTextDatum(middle_center);
+        M5.Display.drawString("< Prev", 56, 180);
+
+        M5.Display.fillRoundRect(112, 168, 96, 24, 4, 0x2945);
+        M5.Display.setTextColor(0xFFE0);
+        M5.Display.drawString("All States", 160, 180);
+
+        M5.Display.fillRoundRect(216, 168, 96, 24, 4, 0x2124);
+        M5.Display.setTextColor(0xFFFF);
+        M5.Display.drawString("Next >", 264, 180);
+
+    } else {
+        // --- NORMAL STATIONS LIST VIEW WITH TOP FILTER BAR ---
+        bool isLangFilt = (activeCatType == CAT_LANG && activeFilterVal != "All");
+        bool isStateFilt = (activeCatType == CAT_STATE && activeFilterVal != "All");
+
+        String langLabel = isLangFilt ? activeFilterVal : "Language";
+        if (langLabel.length() > 9) langLabel = langLabel.substring(0, 7) + "..";
+        M5.Display.fillRoundRect(6, 29, 98, 22, 4, isLangFilt ? 0x07E0 : 0x2124);
+        M5.Display.setTextColor(isLangFilt ? 0x0000 : 0xFFFF);
+        M5.Display.setTextDatum(middle_center);
+        M5.Display.setFont(&fonts::Font0);
+        M5.Display.drawString(langLabel, 55, 40);
+
+        String stateLabel = isStateFilt ? activeFilterVal : "State";
+        if (stateLabel.length() > 9) stateLabel = stateLabel.substring(0, 7) + "..";
+        M5.Display.fillRoundRect(110, 29, 98, 22, 4, isStateFilt ? 0x07E0 : 0x2124);
+        M5.Display.setTextColor(isStateFilt ? 0x0000 : 0xFFFF);
+        M5.Display.drawString(stateLabel, 159, 40);
+
+        bool isAnyFilt = isLangFilt || isStateFilt;
+        M5.Display.fillRoundRect(214, 29, 100, 22, 4, isAnyFilt ? 0xFD20 : 0x18E3);
+        M5.Display.setTextColor(isAnyFilt ? 0x0000 : 0xFFE0);
+        M5.Display.drawString(isAnyFilt ? "Reset Filter" : "All Stations", 264, 40);
+
+        // List of Stations (4 per page)
+        int totalFiltered = filteredIndices.size();
+        int totalPages = (totalFiltered + STATIONS_PER_PAGE - 1) / STATIONS_PER_PAGE;
+        if (totalPages == 0) totalPages = 1;
+
+        int startIdx = stationCurrentPage * STATIONS_PER_PAGE;
+        for (int i = 0; i < STATIONS_PER_PAGE; i++) {
+            int idx = startIdx + i;
+            int y = 56 + (i * 27);
+            if (idx < totalFiltered) {
+                int realIdx = filteredIndices[idx];
+                bool isCur = (idx == currentFilterPosition);
+                M5.Display.fillRoundRect(8, y, 304, 24, 4, isCur ? 0x07FF : 0x18E3);
+                M5.Display.setTextColor(isCur ? 0x0000 : 0xFFFF);
+                M5.Display.setTextDatum(middle_left);
+                String stText = runtimeStations[realIdx].name;
+                if (stText.length() > 24) stText = stText.substring(0, 22) + "..";
+                M5.Display.drawString(stText, 16, y + 12);
+
+                // Right badge on row (Lang or State)
+                M5.Display.setTextDatum(middle_right);
+                M5.Display.setTextColor(isCur ? 0x0000 : 0x9CD3);
+                String tag = isLangFilt ? runtimeStations[realIdx].state : runtimeStations[realIdx].language;
+                if (tag.length() > 9) tag = tag.substring(0, 7) + "..";
+                M5.Display.drawString(tag, 304, y + 12);
+            }
+        }
+
+        // Bottom Page Controls: [ < Prev ]   Page X / Y (Total)   [ Next > ]
+        M5.Display.fillRoundRect(8, 168, 96, 24, 4, 0x2124);
+        M5.Display.setTextColor(0xFFFF);
+        M5.Display.setTextDatum(middle_center);
+        M5.Display.drawString("< Prev", 56, 180);
+
+        char pBuf[32];
+        snprintf(pBuf, sizeof(pBuf), "%d / %d (%d)", stationCurrentPage + 1, totalPages, totalFiltered);
+        M5.Display.setTextColor(0xFFE0);
+        M5.Display.drawString(pBuf, 160, 180);
+
+        M5.Display.fillRoundRect(216, 168, 96, 24, 4, 0x2124);
+        M5.Display.setTextColor(0xFFFF);
+        M5.Display.drawString("Next >", 264, 180);
     }
-
-    M5.Display.fillRoundRect(8, 170, 148, 24, 4, 0x2124);
-    M5.Display.setTextColor(0xFFFF);
-    M5.Display.setTextDatum(middle_center);
-    M5.Display.drawString("< Prev Page", 82, 182);
-
-    M5.Display.fillRoundRect(164, 170, 148, 24, 4, 0x2124);
-    M5.Display.drawString("Next Page >", 238, 182);
 }
 
 // -----------------------------------------------------------------------------
@@ -1025,9 +1173,10 @@ void handleTouchAndButtons() {
     // Bottom Navigation Bar (3 tabs: [Radio] [Stations] [Wi-Fi])
     if (y >= 196) {
         int clickedTab = (x < 107) ? 0 : ((x < 213) ? 1 : 2);
-        if (activeTab != clickedTab || isEnteringWiFiPass) {
+        if (activeTab != clickedTab || isEnteringWiFiPass || stationViewMode != STATION_VIEW_LIST) {
             activeTab = clickedTab;
             isEnteringWiFiPass = false;
+            stationViewMode = STATION_VIEW_LIST;
             uiNeedsUpdate = true;
         }
         return;
@@ -1035,6 +1184,19 @@ void handleTouchAndButtons() {
 
     // Tab 0: Now Playing Touch Actions
     if (activeTab == 0) {
+        // Tapping the badges: [ Language ] [ State ] at y: 64..84
+        if (y >= 64 && y <= 86 && !filteredIndices.empty()) {
+            int realIdx = filteredIndices[currentFilterPosition];
+            if (x < 160) {
+                applyCategoryFilter(CAT_LANG, runtimeStations[realIdx].language.c_str());
+            } else {
+                applyCategoryFilter(CAT_STATE, runtimeStations[realIdx].state.c_str());
+            }
+            activeTab = 1;
+            stationViewMode = STATION_VIEW_LIST;
+            uiNeedsUpdate = true;
+            return;
+        }
         if (y >= 145 && y <= 185) {
             if (x >= 8 && x <= 60) playStationByFilterIndex(currentFilterPosition - 1);
             else if (x >= 66 && x <= 144) togglePlayPause();
@@ -1045,28 +1207,136 @@ void handleTouchAndButtons() {
     }
     // Tab 1: Stations List Touch Actions
     else if (activeTab == 1) {
-        for (int i = 0; i < STATIONS_PER_PAGE; i++) {
-            int rowY = 56 + (i * 28);
-            if (y >= rowY && y <= rowY + 25) {
-                int clickedIdx = (stationCurrentPage * STATIONS_PER_PAGE) + i;
-                if (clickedIdx < (int)filteredIndices.size()) {
-                    currentFilterPosition = clickedIdx;
-                    activeTab = 0;
-                    playCurrentStation();
+        if (stationViewMode == STATION_VIEW_PICK_LANG) {
+            // Back button
+            if (y >= 28 && y <= 52 && x >= 240 && x <= 314) {
+                stationViewMode = STATION_VIEW_LIST;
+                uiNeedsUpdate = true;
+                return;
+            }
+            // Language Grid (y: 56..164)
+            if (y >= 56 && y <= 164) {
+                int row = (y - 56) / 27;
+                int col = (x < 160) ? 0 : 1;
+                if (row >= 0 && row < 4) {
+                    int idx = (langPickerPage * 8) + (row * 2) + col;
+                    if (idx < TOTAL_LANGUAGES) {
+                        if (idx == 0) {
+                            applyCategoryFilter(CAT_ALL, "All");
+                        } else {
+                            applyCategoryFilter(CAT_LANG, FILTER_LANGUAGES[idx]);
+                        }
+                        stationViewMode = STATION_VIEW_LIST;
+                        uiNeedsUpdate = true;
+                        return;
+                    }
+                }
+            }
+            // Bottom Pagination Controls (y: 168..194)
+            if (y >= 168 && y <= 194) {
+                int totalPages = (TOTAL_LANGUAGES + 7) / 8;
+                if (x >= 8 && x <= 104) {
+                    if (langPickerPage > 0) langPickerPage--;
+                    else langPickerPage = totalPages - 1;
+                    uiNeedsUpdate = true;
+                } else if (x >= 112 && x <= 208) { // "All Langs"
+                    applyCategoryFilter(CAT_ALL, "All");
+                    stationViewMode = STATION_VIEW_LIST;
+                    uiNeedsUpdate = true;
+                } else if (x >= 216 && x <= 312) {
+                    if (langPickerPage < totalPages - 1) langPickerPage++;
+                    else langPickerPage = 0;
+                    uiNeedsUpdate = true;
+                }
+            }
+        } else if (stationViewMode == STATION_VIEW_PICK_STATE) {
+            // Back button
+            if (y >= 28 && y <= 52 && x >= 240 && x <= 314) {
+                stationViewMode = STATION_VIEW_LIST;
+                uiNeedsUpdate = true;
+                return;
+            }
+            // State Grid (y: 56..164)
+            if (y >= 56 && y <= 164) {
+                int row = (y - 56) / 27;
+                int col = (x < 160) ? 0 : 1;
+                if (row >= 0 && row < 4) {
+                    int idx = (statePickerPage * 8) + (row * 2) + col;
+                    if (idx < TOTAL_STATES) {
+                        if (idx == 0) {
+                            applyCategoryFilter(CAT_ALL, "All");
+                        } else {
+                            applyCategoryFilter(CAT_STATE, FILTER_STATES[idx]);
+                        }
+                        stationViewMode = STATION_VIEW_LIST;
+                        uiNeedsUpdate = true;
+                        return;
+                    }
+                }
+            }
+            // Bottom Pagination Controls (y: 168..194)
+            if (y >= 168 && y <= 194) {
+                int totalPages = (TOTAL_STATES + 7) / 8;
+                if (x >= 8 && x <= 104) {
+                    if (statePickerPage > 0) statePickerPage--;
+                    else statePickerPage = totalPages - 1;
+                    uiNeedsUpdate = true;
+                } else if (x >= 112 && x <= 208) { // "All States"
+                    applyCategoryFilter(CAT_ALL, "All");
+                    stationViewMode = STATION_VIEW_LIST;
+                    uiNeedsUpdate = true;
+                } else if (x >= 216 && x <= 312) {
+                    if (statePickerPage < totalPages - 1) statePickerPage++;
+                    else statePickerPage = 0;
+                    uiNeedsUpdate = true;
+                }
+            }
+        } else {
+            // NORMAL STATIONS LIST VIEW
+            // Top Bar: [ Lang ] [ State ] [ All / Reset ]
+            if (y >= 28 && y <= 52) {
+                if (x >= 6 && x <= 104) {
+                    stationViewMode = STATION_VIEW_PICK_LANG;
+                    langPickerPage = 0;
+                    uiNeedsUpdate = true;
+                    return;
+                } else if (x >= 110 && x <= 208) {
+                    stationViewMode = STATION_VIEW_PICK_STATE;
+                    statePickerPage = 0;
+                    uiNeedsUpdate = true;
+                    return;
+                } else if (x >= 214 && x <= 314) {
+                    applyCategoryFilter(CAT_ALL, "All");
+                    uiNeedsUpdate = true;
                     return;
                 }
             }
-        }
-        if (y >= 170 && y <= 194) {
-            int totalPages = (filteredIndices.size() + STATIONS_PER_PAGE - 1) / STATIONS_PER_PAGE;
-            if (x < 156) {
-                if (stationCurrentPage > 0) stationCurrentPage--;
-                else stationCurrentPage = totalPages - 1;
-                uiNeedsUpdate = true;
-            } else {
-                if (stationCurrentPage < totalPages - 1) stationCurrentPage++;
-                else stationCurrentPage = 0;
-                uiNeedsUpdate = true;
+            // Select Station from list (y: 56..164)
+            for (int i = 0; i < STATIONS_PER_PAGE; i++) {
+                int rowY = 56 + (i * 27);
+                if (y >= rowY && y <= rowY + 24) {
+                    int clickedIdx = (stationCurrentPage * STATIONS_PER_PAGE) + i;
+                    if (clickedIdx < (int)filteredIndices.size()) {
+                        currentFilterPosition = clickedIdx;
+                        activeTab = 0;
+                        playCurrentStation();
+                        return;
+                    }
+                }
+            }
+            // Station Page Controls (y: 168..194)
+            if (y >= 168 && y <= 194) {
+                int totalPages = (filteredIndices.size() + STATIONS_PER_PAGE - 1) / STATIONS_PER_PAGE;
+                if (totalPages == 0) totalPages = 1;
+                if (x < 156) {
+                    if (stationCurrentPage > 0) stationCurrentPage--;
+                    else stationCurrentPage = totalPages - 1;
+                    uiNeedsUpdate = true;
+                } else {
+                    if (stationCurrentPage < totalPages - 1) stationCurrentPage++;
+                    else stationCurrentPage = 0;
+                    uiNeedsUpdate = true;
+                }
             }
         }
     }
