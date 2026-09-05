@@ -667,7 +667,29 @@ void enterDeepSleep() {
     // 6. Arm Capacitive Touch Interrupt (GPIO 3) & BOOT button (GPIO 0) as Wakeup Sources
     esp_sleep_enable_ext1_wakeup((1ULL << 3) | (1ULL << 0), ESP_EXT1_WAKEUP_ANY_LOW);
 
-    Serial.println("[POWER] Deep Sleep active. Touch screen to wake.");
+    // 7. Arm Hardware RTC Timer Wakeup if Auto-On Alarm is Enabled
+    if (timerEnabled) {
+        time_t nowSec;
+        struct tm timeinfo;
+        time(&nowSec);
+        localtime_r(&nowSec, &timeinfo);
+        if (timeinfo.tm_year >= (2020 - 1900)) { // NTP was synchronized
+            long currentSecOfDay = timeinfo.tm_hour * 3600 + timeinfo.tm_min * 60 + timeinfo.tm_sec;
+            long targetSecOfDay = timerHour * 3600 + timerMin * 60;
+            long diffSec = targetSecOfDay - currentSecOfDay;
+            if (diffSec <= 10) {
+                // If target time today already passed or is within 10 seconds, schedule for tomorrow (24h)
+                diffSec += 86400L;
+            }
+            uint64_t sleepUs = (uint64_t)diffSec * 1000000ULL;
+            esp_sleep_enable_timer_wakeup(sleepUs);
+            Serial.printf("[POWER] Armed RTC Alarm Wakeup in %ld seconds (%02d:%02d)\n", diffSec, timerHour, timerMin);
+        } else {
+            Serial.println("[POWER] Clock not synced via NTP, cannot arm RTC alarm wakeup.");
+        }
+    }
+
+    Serial.println("[POWER] Deep Sleep active. Touch screen or timer to wake.");
     Serial.flush();
     esp_deep_sleep_start();
 }
@@ -916,6 +938,7 @@ static lv_obj_t* btn_timer_en_toggle = NULL;
 static lv_obj_t* lbl_timer_en_status = NULL;
 static lv_obj_t* lbl_modal_h = NULL;
 static lv_obj_t* lbl_modal_m = NULL;
+static lv_obj_t* btn_modal_ampm = NULL;
 static lv_obj_t* lbl_modal_ampm = NULL;
 static lv_obj_t* lbl_modal_dur = NULL;
 
@@ -964,6 +987,14 @@ static void update_timer_modal_display() {
         lv_label_set_text(lbl_modal_h, bufH);
         lv_label_set_text(lbl_modal_m, bufM);
         lv_label_set_text(lbl_modal_ampm, ampm);
+
+        if (btn_modal_ampm) {
+            if (edit_timer_h >= 12) {
+                lv_obj_set_style_bg_color(btn_modal_ampm, lv_color_hex(0xFF9100), 0); // Amber for PM
+            } else {
+                lv_obj_set_style_bg_color(btn_modal_ampm, lv_color_hex(0x00E5FF), 0); // Cyan for AM
+            }
+        }
     }
 
     if (lbl_modal_dur) {
@@ -1005,6 +1036,16 @@ static void btn_timer_m_inc_cb(lv_event_t* e) {
     update_timer_modal_display();
 }
 
+static void btn_timer_ampm_cb(lv_event_t* e) {
+    if (!isDebouncedTouch(150)) return;
+    if (edit_timer_h >= 12) {
+        edit_timer_h -= 12; // PM -> AM
+    } else {
+        edit_timer_h += 12; // AM -> PM
+    }
+    update_timer_modal_display();
+}
+
 static void btn_timer_dur_prev_cb(lv_event_t* e) {
     if (!isDebouncedTouch()) return;
     edit_timer_dur_idx--;
@@ -1026,6 +1067,8 @@ static void btn_timer_cancel_cb(lv_event_t* e) {
         lv_obj_del(modal_timer_backdrop);
         modal_timer_backdrop = NULL;
         modal_timer_box = NULL;
+        btn_modal_ampm = NULL;
+        lbl_modal_ampm = NULL;
     }
     bsp_display_unlock();
 }
@@ -1042,6 +1085,8 @@ static void btn_timer_save_cb(lv_event_t* e) {
         lv_obj_del(modal_timer_backdrop);
         modal_timer_backdrop = NULL;
         modal_timer_box = NULL;
+        btn_modal_ampm = NULL;
+        lbl_modal_ampm = NULL;
     }
     updateClockAndBatteryUI();
     bsp_display_unlock();
@@ -1173,10 +1218,17 @@ void showTimerModal() {
     lv_obj_set_style_text_font(l_m_i, &lv_font_montserrat_18, 0);
     lv_obj_center(l_m_i);
 
-    lbl_modal_ampm = lv_label_create(pnl_time);
-    lv_obj_set_style_text_font(lbl_modal_ampm, &lv_font_montserrat_16, 0);
-    lv_obj_set_style_text_color(lbl_modal_ampm, lv_color_hex(0x00E5FF), 0);
-    lv_obj_align(lbl_modal_ampm, LV_ALIGN_RIGHT_MID, -8, 0);
+    btn_modal_ampm = lv_btn_create(pnl_time);
+    lv_obj_set_size(btn_modal_ampm, 58, 34);
+    lv_obj_align(btn_modal_ampm, LV_ALIGN_RIGHT_MID, -6, 0);
+    lv_obj_set_style_bg_color(btn_modal_ampm, lv_color_hex(0x00E5FF), 0);
+    lv_obj_set_style_radius(btn_modal_ampm, 6, 0);
+    lv_obj_add_event_cb(btn_modal_ampm, btn_timer_ampm_cb, LV_EVENT_CLICKED, NULL);
+
+    lbl_modal_ampm = lv_label_create(btn_modal_ampm);
+    lv_obj_set_style_text_font(lbl_modal_ampm, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_color(lbl_modal_ampm, lv_color_hex(0x000000), 0);
+    lv_obj_center(lbl_modal_ampm);
 
     // 4. Play Duration Selector Box
     lv_obj_t* pnl_dur = lv_obj_create(modal_timer_box);
@@ -2655,15 +2707,9 @@ void checkAutoOnTimer() {
     // 1. Check if alarm playback duration has expired (Auto-Off)
     if (alarmActivePlaying && (timerDuration > 0)) {
         if (millis() >= alarmAutoOffExpiryMs) {
-            Serial.println("[TIMER] Auto-off duration expired! Stopping playback and turning off display backlight...");
+            Serial.println("[TIMER] Auto-off duration expired! Entering deep sleep...");
             alarmActivePlaying = false;
-            if (isPlaying) {
-                audio.stopSong();
-                isPlaying = false;
-                isBuffering = false;
-                updatePlayerUI();
-            }
-            digitalWrite(TFT_BLK, 1 - TFT_BLK_ON_LEVEL); // Turn off backlight
+            enterDeepSleep();
             return;
         }
     }
@@ -3452,11 +3498,12 @@ void setup() {
     // Now turn on the backlight to reveal the UI instantly without white flashes
     bsp_display_backlight_on();
 
-    // 8. Check Wakeup Cause (Deep Sleep Touch Wakeup vs Cold Boot)
+    // 8. Check Wakeup Cause (Deep Sleep Touch Wakeup vs Cold Boot vs RTC Timer Wakeup)
     esp_sleep_wakeup_cause_t wakeup_cause = esp_sleep_get_wakeup_cause();
-    bool wokeFromSleep = (wakeup_cause == ESP_SLEEP_WAKEUP_EXT1 || 
+    bool wokeFromTouch = (wakeup_cause == ESP_SLEEP_WAKEUP_EXT1 || 
                           wakeup_cause == ESP_SLEEP_WAKEUP_EXT0 || 
                           wakeup_cause == ESP_SLEEP_WAKEUP_GPIO);
+    bool wokeFromTimer = (wakeup_cause == ESP_SLEEP_WAKEUP_TIMER);
 
     // 9. Configure Hardware I2S Digital Amplifier & Register Audio Callbacks
     Audio::audio_info_callback = audio_msg_handler;
@@ -3466,12 +3513,22 @@ void setup() {
 
     // (Audio task creation removed)
 
-    // 11. Handle Boot Mode: Wakeup Confirmation Prompt vs Normal Boot Auto-Play
-    if (wokeFromSleep) {
+    // 11. Handle Boot Mode: Wakeup Confirmation Prompt vs Normal Boot Auto-Play vs Timer Wakeup
+    if (wokeFromTouch) {
         Serial.println("[POWER] Woke from Deep Sleep via Touch Interrupt. Showing Resume Prompt...");
         showWakeupPrompt();
     } else {
-        Serial.println("[POWER] Cold Boot. Connecting to Wi-Fi and auto-starting radio...");
+        if (wokeFromTimer) {
+            Serial.printf("[POWER] Woke from Deep Sleep via Hardware RTC Timer (Auto-On Alarm at %02d:%02d)!\n", timerHour, timerMin);
+            if (timerDuration > 0) {
+                alarmActivePlaying = true;
+                alarmAutoOffExpiryMs = millis() + ((uint32_t)timerDuration * 60000UL);
+                Serial.printf("[TIMER ALARM] Auto-off scheduled in %d minutes\n", timerDuration);
+            }
+        } else {
+            Serial.println("[POWER] Cold Boot. Connecting to Wi-Fi and auto-starting radio...");
+        }
+
         bool wifiOk = initWiFi();
         updateWiFiStatusBanner();
         updatePlayerUI();
