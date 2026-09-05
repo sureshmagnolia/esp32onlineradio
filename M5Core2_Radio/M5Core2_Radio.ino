@@ -320,7 +320,30 @@ void setSystemVolume(int vol) {
     prefs.begin("air_radio", false);
     prefs.putInt("last_vol", currentVolume);
     prefs.end();
-    uiNeedsUpdate = true;
+
+    // Fast in-place zero-flicker volume redraw
+    if (activeTab == 0) {
+        M5.Display.fillRoundRect(226, 145, 48, 38, 6, 0x10A2);
+        M5.Display.setTextDatum(middle_center);
+        M5.Display.setFont(&fonts::Font0);
+        M5.Display.setTextColor(0x9CD3);
+        M5.Display.drawString("VOL", 250, 153);
+        char curVolStr[8];
+        snprintf(curVolStr, sizeof(curVolStr), "%d", currentVolume);
+        M5.Display.setFont(&fonts::Font2);
+        M5.Display.setTextColor(0xFFE0);
+        M5.Display.drawString(curVolStr, 250, 171);
+
+        char volBuf[16];
+        snprintf(volBuf, sizeof(volBuf), "VOL: %d ", currentVolume);
+        M5.Display.fillRect(130, 0, 60, 26, 0x18C3);
+        M5.Display.setTextDatum(top_center);
+        M5.Display.setFont(&fonts::Font0);
+        M5.Display.setTextColor(0xFFE0, 0x18C3);
+        M5.Display.drawString(volBuf, 160, 8);
+    } else {
+        uiNeedsUpdate = true;
+    }
 }
 
 void togglePlayPause() {
@@ -633,6 +656,13 @@ void drawHeader() {
         M5.Display.drawString("NO WI-FI", 6, 8);
     }
 
+    // Centered Volume Level Number
+    char volBuf[16];
+    snprintf(volBuf, sizeof(volBuf), "VOL: %d", currentVolume);
+    M5.Display.setTextDatum(top_center);
+    M5.Display.setTextColor(0xFFE0, 0x18C3);
+    M5.Display.drawString(volBuf, 160, 8);
+
     int bat = M5.Power.getBatteryLevel();
     bool chg = M5.Power.isCharging();
     char batBuf[16];
@@ -738,27 +768,43 @@ void drawNowPlayingTab() {
         M5.Display.drawString(dateBuf, 160, 126);
     }
 
-    // 3. Playback Controls Row: [ |<< Prev ]  [ Play/Pause ]  [ Next >>| ]  [ Vol - ] [ Vol + ]
-    M5.Display.fillRoundRect(8, 145, 52, 38, 6, 0x2124);
+    // 3. Playback Controls Row: [ |<< ] [ Play/Pause ] [ >>| ] [ - ] [ VOL 16 ] [ + ]
+    M5.Display.fillRoundRect(6, 145, 46, 38, 6, 0x2124);
     M5.Display.setTextColor(0xFFFF);
-    M5.Display.drawString("|<<", 34, 164);
+    M5.Display.drawString("|<<", 29, 164);
 
     uint16_t playColor = isPlaying ? 0x07E0 : 0xF800;
-    M5.Display.fillRoundRect(66, 145, 78, 38, 6, playColor);
+    M5.Display.fillRoundRect(56, 145, 72, 38, 6, playColor);
     M5.Display.setTextColor(0x0000);
-    M5.Display.drawString(isPlaying ? "PAUSE" : "PLAY", 105, 164);
+    M5.Display.drawString(isPlaying ? "PAUSE" : "PLAY", 92, 164);
 
-    M5.Display.fillRoundRect(150, 145, 52, 38, 6, 0x2124);
+    M5.Display.fillRoundRect(132, 145, 46, 38, 6, 0x2124);
     M5.Display.setTextColor(0xFFFF);
-    M5.Display.drawString(">>|", 176, 164);
+    M5.Display.drawString(">>|", 155, 164);
 
-    M5.Display.fillRoundRect(210, 145, 48, 38, 6, 0x2945);
+    // VOL -
+    M5.Display.fillRoundRect(184, 145, 38, 38, 6, 0x2945);
     M5.Display.setTextColor(0xFFFF);
-    M5.Display.drawString("VOL-", 234, 164);
+    M5.Display.setFont(&fonts::Font2);
+    M5.Display.drawString("-", 203, 164);
 
-    M5.Display.fillRoundRect(264, 145, 48, 38, 6, 0x2945);
+    // Current Volume Box with bold number
+    M5.Display.fillRoundRect(226, 145, 48, 38, 6, 0x10A2);
+    M5.Display.setTextDatum(middle_center);
+    M5.Display.setFont(&fonts::Font0);
+    M5.Display.setTextColor(0x9CD3);
+    M5.Display.drawString("VOL", 250, 153);
+    char curVolStr[8];
+    snprintf(curVolStr, sizeof(curVolStr), "%d", currentVolume);
+    M5.Display.setFont(&fonts::Font2);
+    M5.Display.setTextColor(0xFFE0);
+    M5.Display.drawString(curVolStr, 250, 171);
+
+    // VOL +
+    M5.Display.fillRoundRect(278, 145, 38, 38, 6, 0x2945);
     M5.Display.setTextColor(0xFFFF);
-    M5.Display.drawString("VOL+", 288, 164);
+    M5.Display.setFont(&fonts::Font2);
+    M5.Display.drawString("+", 297, 164);
 }
 
 void drawStationsTab() {
@@ -1198,11 +1244,20 @@ void handleTouchAndButtons() {
             return;
         }
         if (y >= 145 && y <= 185) {
-            if (x >= 8 && x <= 60) playStationByFilterIndex(currentFilterPosition - 1);
-            else if (x >= 66 && x <= 144) togglePlayPause();
-            else if (x >= 150 && x <= 202) playStationByFilterIndex(currentFilterPosition + 1);
-            else if (x >= 210 && x <= 258) setSystemVolume(currentVolume - 1);
-            else if (x >= 264 && x <= 312) setSystemVolume(currentVolume + 1);
+            if (x >= 6 && x <= 52) playStationByFilterIndex(currentFilterPosition - 1);
+            else if (x >= 56 && x <= 128) togglePlayPause();
+            else if (x >= 132 && x <= 178) playStationByFilterIndex(currentFilterPosition + 1);
+            else if (x >= 184 && x <= 222) setSystemVolume(currentVolume - 1);
+            else if (x >= 226 && x <= 274) {
+                // Tap volume number to mute / unmute
+                if (currentVolume > 0) {
+                    prevVolume = currentVolume;
+                    setSystemVolume(0);
+                } else {
+                    setSystemVolume(prevVolume > 0 ? prevVolume : 16);
+                }
+            }
+            else if (x >= 278 && x <= 316) setSystemVolume(currentVolume + 1);
         }
     }
     // Tab 1: Stations List Touch Actions

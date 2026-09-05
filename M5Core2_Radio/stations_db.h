@@ -10,18 +10,27 @@ struct StationItem {
     const char* url;
 };
 
-#define TOTAL_ALL_STATIONS 42
+#define TOTAL_ALL_STATIONS 51
 #define TOTAL_LANGUAGES 3
 #define TOTAL_STATES 4
 
 const StationItem ALL_STATIONS[TOTAL_ALL_STATIONS] PROGMEM = {
-    { "AIR Malayalam National", "National", "Malayalam", "http://air.pc.cdn.bitgravity.com/air/live/pbaudio230/playlist.m3u8" },
+    { "Akashvani Thrissur", "Kerala", "Malayalam", "https://radio.wavespb.com/live/f70fdeca437dc326/f70fdeca437dc326.m3u8" },
+    { "AIR Thrissur Relay", "Kerala", "Malayalam", "https://airrelay.onrender.com/thrissur.mp3" },
+    { "FM Rainbow Kochi", "Kerala", "Malayalam", "https://radio.wavespb.com/live/7df6f2a8c3c4d33b/7df6f2a8c3c4d33b.m3u8" },
+    { "Akashvani Kochi 102.3", "Kerala", "Malayalam", "https://radio.wavespb.com/live/70400e7510e87cdf/70400e7510e87cdf.m3u8" },
+    { "Akashvani Kozhikode (Calicut)", "Kerala", "Malayalam", "https://radio.wavespb.com/live/8321393de70015fc/8321393de70015fc.m3u8" },
+    { "Akashvani Kozhikode Real FM", "Kerala", "Malayalam", "https://radio.wavespb.com/live/b69c296065db7627/b69c296065db7627.m3u8" },
+    { "Akashvani Kannur", "Kerala", "Malayalam", "https://radio.wavespb.com/live/b82c91a395fc4a7d/b82c91a395fc4a7d.m3u8" },
+    { "Akashvani Devikulam", "Kerala", "Malayalam", "https://radio.wavespb.com/live/e97acc829da9bf2a/e97acc829da9bf2a.m3u8" },
+    { "Akashvani Manjeri", "Kerala", "Malayalam", "https://radio.wavespb.com/live/58390a2ed33cea4a/58390a2ed33cea4a.m3u8" },
+    { "Akashvani Thiruvananthapuram", "Kerala", "Malayalam", "https://air.pc.cdn.bitgravity.com/air/live/pbaudio001/playlist.m3u8" },
     { "Ananthapuri FM 101.9", "Kerala", "Malayalam", "https://air.pc.cdn.bitgravity.com/air/live/pbaudio229/playlist.m3u8" },
     { "AIR Alappuzha", "Kerala", "Malayalam", "https://air.pc.cdn.bitgravity.com/air/live/pbaudio230/playlist.m3u8" },
-    { "AIR Devikulam", "Kerala", "Malayalam", "https://air.pc.cdn.bitgravity.com/air/live/pbaudio214/chunklist.m3u8" },
-    { "Vividh Bharati Thiruvananthapuram", "Kerala", "Malayalam", "https://air.pc.cdn.bitgravity.com/air/live/pbaudio001/playlist.m3u8" },
-    { "Kochi FM 102.3", "Kerala", "Malayalam", "https://radio.wavespb.com/live/70400e7510e87cdf/70400e7510e87cdf.m3u8" },
-    { "Radio Kochi", "Kerala", "Malayalam", "https://d3caeelfr0kslf.cloudfront.net/radiokochi.m3u8" },
+    { "VB Malayalam (Vividh Bharati)", "Kerala", "Malayalam", "https://radio.wavespb.com/live/ad3a8436a329e2d6/ad3a8436a329e2d6.m3u8" },
+    { "Akashvani Kerala State", "Kerala", "Malayalam", "https://radio.wavespb.com/live/6ff13de7ea9b53d7/6ff13de7ea9b53d7.m3u8" },
+    { "AIR Malayalam National", "National", "Malayalam", "http://air.pc.cdn.bitgravity.com/air/live/pbaudio230/playlist.m3u8" },
+    { "Akashvani Kavaratti", "Kerala", "Malayalam", "https://radio.wavespb.com/live/ffb3825f86c4b9e3/ffb3825f86c4b9e3.m3u8" },
     { "Raagam AIR 24x7 Carnatic", "National", "Malayalam", "https://airhlspush.pc.cdn.bitgravity.com/httppush/hlspbaudioragam/hlspbaudioragam_Auto.m3u8" },
     { "Radio Suno 91.7 FM", "Kerala", "Malayalam", "http://playerservices.streamtheworld.com/api/livestream-redirect/SUNO917_SC" },
     { "Radio Suno Malayalam 91.7", "Kerala", "Malayalam", "https://playerservices.streamtheworld.com/api/livestream-redirect/SUNO917_SC" },
@@ -40,7 +49,7 @@ const StationItem ALL_STATIONS[TOTAL_ALL_STATIONS] PROGMEM = {
     { "Ente Radio Malayalam", "Kerala", "Malayalam", "https://cast1.my-control-panel.com/proxy/enteradio/stream" },
     { "Shahimsha Online Radio", "Kerala", "Malayalam", "https://radio.shahimsha.com/listen/shahimsha/radio.mp3" },
     { "Peace Radio Malayalam", "Kerala", "Malayalam", "https://peaceradio.out.airtime.pro/peaceradio_a" },
-    { "Peace Radio Quran Malayalam", "Kerala", "Malayalam", "http://stream.peaceradio.com:8000/quran/high" },
+    { "Peace Radio Quran", "Kerala", "Malayalam", "http://stream.peaceradio.com:8000/quran/high" },
     { "Shaiva Lahari Malayalam", "Kerala", "Malayalam", "https://radio.shaivam.org/listen/shaiva-lahari/radio.mp3" },
     { "DVN Radio Malayalam", "Kerala", "Malayalam", "https://ice31.securenetsystems.net/DVN" },
     { "Amen Radio Malayalam", "Kerala", "Malayalam", "https://ice7.securenetsystems.net/AMENFM" },
