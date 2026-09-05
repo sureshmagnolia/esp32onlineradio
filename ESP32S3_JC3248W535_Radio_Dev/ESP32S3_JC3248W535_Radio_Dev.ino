@@ -1301,8 +1301,14 @@ static void btn_play_cb(lv_event_t* e) {
     }
 
     if (isPlaying) {
-        audio.pauseResume();
-        isPlaying = audio.isRunning();
+        if (currentSource == SRC_RADIO) {
+            audio.stopSong();
+            isPlaying = false;
+            isBuffering = false;
+        } else {
+            audio.pauseResume();
+            isPlaying = audio.isRunning();
+        }
     } else {
         if (currentSource == SRC_SD) {
             playCurrentSdTrack();
@@ -3328,31 +3334,59 @@ void startAPPortal() {
 }
 
 bool initWiFi() {
+    WiFi.disconnect(true, true);
+    delay(100);
     WiFi.mode(WIFI_STA);
     WiFi.setAutoReconnect(true);
     WiFi.setSleep(false);
     esp_wifi_set_ps(WIFI_PS_NONE);
 
-    Serial.printf("[WIFI] Connecting to '%s' ...\n", currentSSID.c_str());
-    WiFi.begin(currentSSID.c_str(), currentPass.c_str());
+    // List of SSIDs to attempt: currentSSID first, then common fallback if different
+    String candidateSSIDs[2];
+    String candidatePasss[2];
+    int numCandidates = 1;
+    candidateSSIDs[0] = currentSSID;
+    candidatePasss[0] = currentPass;
 
-    int timeout = 0;
-    while (WiFi.status() != WL_CONNECTED && timeout < 60) {
-        delay(500);
-        Serial.print(".");
-        timeout++;
+    if (currentSSID == "suresh2.4gExt") {
+        candidateSSIDs[1] = "suresh";
+        candidatePasss[1] = currentPass;
+        numCandidates = 2;
+    } else if (currentSSID == "suresh") {
+        candidateSSIDs[1] = "suresh2.4gExt";
+        candidatePasss[1] = currentPass;
+        numCandidates = 2;
     }
 
-    if (WiFi.status() == WL_CONNECTED) {
-        WiFi.setSleep(false);
-        esp_wifi_set_ps(WIFI_PS_NONE);
-        Serial.printf("\n[WIFI] Connected! IP: %s\n", WiFi.localIP().toString().c_str());
-        setupWebServer();
-        return true;
-    } else {
-        Serial.println("\n[WIFI] Not connected to saved network.");
-        return false;
+    for (int cand = 0; cand < numCandidates; cand++) {
+        for (int attempt = 1; attempt <= 2; attempt++) {
+            Serial.printf("[WIFI] Connecting to '%s' (Attempt %d/2) ...\n", candidateSSIDs[cand].c_str(), attempt);
+            WiFi.begin(candidateSSIDs[cand].c_str(), candidatePasss[cand].c_str());
+
+            int timeout = 0;
+            while (WiFi.status() != WL_CONNECTED && timeout < 30) {
+                delay(500);
+                Serial.print(".");
+                timeout++;
+            }
+
+            if (WiFi.status() == WL_CONNECTED) {
+                WiFi.setSleep(false);
+                esp_wifi_set_ps(WIFI_PS_NONE);
+                currentSSID = candidateSSIDs[cand];
+                currentPass = candidatePasss[cand];
+                Serial.printf("\n[WIFI] Connected! IP: %s\n", WiFi.localIP().toString().c_str());
+                setupWebServer();
+                return true;
+            }
+            Serial.println("\n[WIFI] Attempt failed.");
+            WiFi.disconnect(false, false);
+            delay(200);
+        }
     }
+
+    Serial.println("[WIFI] Could not connect to any known network.");
+    return false;
 }
 
 // =============================================================================
@@ -3489,8 +3523,19 @@ void loop() {
     }
     if (pendingWebAction != ACT_NONE) {
         if (pendingWebAction == ACT_PLAY_PAUSE) {
-            if (isPlaying) { audio.pauseResume(); isPlaying = audio.isRunning(); }
-            else { if (currentSource == SRC_SD) playCurrentSdTrack(); else playCurrentStation(); }
+            if (isPlaying) {
+                if (currentSource == SRC_RADIO) {
+                    audio.stopSong();
+                    isPlaying = false;
+                    isBuffering = false;
+                } else {
+                    audio.pauseResume();
+                    isPlaying = audio.isRunning();
+                }
+            } else {
+                if (currentSource == SRC_SD) playCurrentSdTrack();
+                else playCurrentStation();
+            }
             updatePlayerUI();
         } else if (pendingWebAction == ACT_PREV) {
             if (currentSource == SRC_SD) playPrevSdTrack();
