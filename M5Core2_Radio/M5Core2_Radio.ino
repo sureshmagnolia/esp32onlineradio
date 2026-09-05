@@ -257,7 +257,7 @@ void applyCategoryFilter(CategoryType cType, const char* filterVal) {
     filteredIndices.clear();
 
     for (size_t i = 0; i < runtimeStations.size(); i++) {
-        if (cType == CAT_ALL || activeFilterVal == "All") {
+        if (cType == CAT_ALL || activeFilterVal == "All" || activeFilterVal == "All Languages" || activeFilterVal == "All Regions" || activeFilterVal == "All States") {
             filteredIndices.push_back(i);
         } else if (cType == CAT_USER || activeFilterVal == "User") {
             if (runtimeStations[i].isCustom) filteredIndices.push_back(i);
