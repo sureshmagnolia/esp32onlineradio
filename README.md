@@ -1,12 +1,36 @@
-# 📻 Dual ESP32 Internet Radio to Bluetooth Bridge (Optimum Build)
+# 📻 ESP32 & ESP32-S3 Online Radio Suite
 
-**Target Station**: Akashvani Thrissur (All India Radio Malayalam)  
-**Stream Format**: High-Fidelity 64Kbps MP3 Relay (`https://airrelay.onrender.com/thrissur.mp3`)  
-**Target Bluetooth Speaker**: `AS23`  
+This repository contains production-ready firmware and 3D enclosure models for ESP32 and ESP32-S3 internet radio systems.
 
 ---
 
-## 🏗️ Architecture Overview
+## 🌟 Primary Flagship: ESP32-S3 JC3248W535 3.5" Smart Touch Radio ("AllIsWell" Golden Baseline)
+
+A standalone internet and MicroSD audio player powered by the **Guition JC3248W535** (ESP32-S3 with 16MB Flash, 8MB Octal PSRAM, 3.5" 320x480 IPS display with AXS15231B touch controller, and NS4168 I2S amplifier).
+
+- **Location**: `ESP32S3_JC3248W535_Radio_AllIsWell/`
+- **Supported Formats**:
+  - **HLS (.m3u8) Streams**: Live AAC / MPEG-TS streams (Akashvani Thrissur, FM Rainbow Kochi, Vividh Bharati, etc.) with seamless inter-chunk transitions.
+  - **MP3 / AAC HTTPS Streams**: Direct Icecast/Shoutcast streams.
+  - **MicroSD Card Audio**: Local MP3/AAC playback with shuffle mode.
+- **Key Features**:
+  - **10-Attempt Connection Retry Engine**: Automatically retries failed connections spaced by 2.5s without interrupting established live streams.
+  - **Auto-On Alarm & Sleep Timer**: On-device touch modal (tap the clock card) + Web Remote duration selector (`15m`, `30m`, `45m`, `60m`, `90m`, `120m`, `Continuous`).
+  - **Web Remote Controller (`http://<ip>/`)**: Clean REST interface for volume, playback, alarm configuration, and custom station management.
+  - **Thread-Safe Queuing Architecture**: HTTP task runs on PSRAM stack (`MALLOC_CAP_SPIRAM`), while all Flash/NVS writes are safely deferred to Core 1 `loopTask`, guaranteeing zero CPU cache panics or reboots.
+
+### Quick Build & Flash Commands:
+```powershell
+# Compile
+arduino-cli compile --fqbn esp32:esp32:esp32s3:CDCOnBoot=cdc,FlashSize=16M,PSRAM=opi,PartitionScheme=app3M_fat9M_16MB --libraries d:\ESP32Radio\libraries d:\ESP32Radio\ESP32S3_JC3248W535_Radio_AllIsWell
+
+# Upload (Adjust COM port as needed)
+arduino-cli upload -p COM8 --fqbn esp32:esp32:esp32s3:CDCOnBoot=cdc,FlashSize=16M,PSRAM=opi,PartitionScheme=app3M_fat9M_16MB d:\ESP32Radio\ESP32S3_JC3248W535_Radio_AllIsWell
+```
+
+---
+
+## 📻 Dual ESP32 Internet Radio to Bluetooth Bridge
 
 The system uses **two standard ESP32-WROOM-32 boards** connected via an **I2S Hardware Bridge**:
 

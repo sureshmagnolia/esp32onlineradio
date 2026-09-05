@@ -111,6 +111,14 @@ volatile bool newStreamRequested = false;
 String pendingStreamUrl = "";
 bool pendingIsSdFile = false;
 
+// 10-Attempt Stream Connection Retry Engine State
+const int MAX_STREAM_RETRIES = 10;
+int streamRetryCount = 0;
+bool isRetryingStream = false;
+uint32_t nextStreamRetryMs = 0;
+String activeTargetUrl = "";
+bool streamEstablished = false;
+
 // Playback Source (Radio vs SD Card)
 enum PlaySource { SRC_RADIO = 0, SRC_SD = 1 };
 PlaySource currentSource = SRC_RADIO;
@@ -134,11 +142,25 @@ int currentFilterPosition = 0;   // Index within filteredIndices
 #define STATIONS_PER_PAGE 5
 int stationCurrentPage = 0;
 
+// Auto-On Alarm & Play Duration State
+bool timerEnabled = false;
+int timerHour = 6;
+int timerMin = 0;
+int timerDuration = 30; // 0 = continuous, 15, 30, 45, 60, 90, 120 minutes
+int lastTimerTriggerDay = -1;
+bool alarmActivePlaying = false;
+uint32_t alarmAutoOffExpiryMs = 0;
+
 // -----------------------------------------------------------------------------
 // Global Touch Debounce Helper (Eliminates all double-triggering & ghost taps)
 // -----------------------------------------------------------------------------
 static uint32_t lastGlobalTouchAction = 0;
 bool isDebouncedTouch(uint32_t minGapMs = 320) {
+    // Wake up backlight if it was turned off by auto-off or sleep
+    digitalWrite(TFT_BLK, TFT_BLK_ON_LEVEL);
+    if (alarmActivePlaying) {
+        alarmActivePlaying = false; // User interacted with device, cancel auto-off
+    }
     uint32_t now = millis();
     if (now - lastGlobalTouchAction < minGapMs) {
         return false;
@@ -188,6 +210,7 @@ static lv_obj_t* lbl_stream_info = NULL;
 static lv_obj_t* pnl_clock_card = NULL;
 static lv_obj_t* lbl_clock = NULL;
 static lv_obj_t* lbl_date_day = NULL;
+static lv_obj_t* lbl_timer_badge = NULL;
 static lv_obj_t* lbl_battery = NULL;
 static lv_timer_t* clock_timer = NULL;
 
@@ -237,11 +260,17 @@ static lv_obj_t* lbl_sd_shuffle = NULL;
 static lv_obj_t* lbl_sd_page_info = NULL;
 static lv_obj_t* list_sd_tracks = NULL;
 
-// Forward Declarations
+// UI Refresh Flags & Forward Declarations
+volatile bool pendingStationListRefresh = false;
+
 void loadSavedSettings();
+void loadTimerSettings();
+void saveTimerSettings(bool en, int h, int m, int dur = 30);
+void checkAutoOnTimer();
+void showTimerModal();
 void initStationDatabase();
 void loadCustomStations();
-void saveCustomStation(const String& name, const String& url, const String& state, const String& lang);
+void saveCustomStation(const String& name, const String& url, const String& state, const String& lang, int editIdx = -1);
 void deleteCustomStation(int customIdx);
 bool initWiFi();
 void initSDCard();
@@ -311,37 +340,42 @@ void loadCustomStations() {
     prefs.end();
 }
 
-void saveCustomStation(const String& name, const String& url, const String& state, const String& lang) {
+void saveCustomStation(const String& name, const String& url, const String& state, const String& lang, int editIdx) {
     if (name.length() == 0 || url.length() == 0) return;
 
     prefs.begin("cust_st", false);
     int count = prefs.getInt("count", 0);
 
-    String key_n = "n_" + String(count);
-    String key_u = "u_" + String(count);
-    String key_s = "s_" + String(count);
-    String key_l = "l_" + String(count);
+    String stState = state.length() > 0 ? state : "Custom";
+    String stLang  = lang.length() > 0 ? lang : "Custom";
 
-    prefs.putString(key_n.c_str(), name);
-    prefs.putString(key_u.c_str(), url);
-    prefs.putString(key_s.c_str(), state);
-    prefs.putString(key_l.c_str(), lang);
-    prefs.putInt("count", count + 1);
-    prefs.end();
+    if (editIdx >= 0 && editIdx < count) {
+        String key_n = "n_" + String(editIdx);
+        String key_u = "u_" + String(editIdx);
+        String key_s = "s_" + String(editIdx);
+        String key_l = "l_" + String(editIdx);
+        prefs.putString(key_n.c_str(), name);
+        prefs.putString(key_u.c_str(), url);
+        prefs.putString(key_s.c_str(), stState);
+        prefs.putString(key_l.c_str(), stLang);
+        prefs.end();
+        Serial.printf("[STATIONS DB] Updated Custom Station [%d]: '%s' -> %s\n", editIdx, name.c_str(), url.c_str());
+    } else {
+        String key_n = "n_" + String(count);
+        String key_u = "u_" + String(count);
+        String key_s = "s_" + String(count);
+        String key_l = "l_" + String(count);
+        prefs.putString(key_n.c_str(), name);
+        prefs.putString(key_u.c_str(), url);
+        prefs.putString(key_s.c_str(), stState);
+        prefs.putString(key_l.c_str(), stLang);
+        prefs.putInt("count", count + 1);
+        prefs.end();
+        Serial.printf("[STATIONS DB] Added Custom Station [%d]: '%s' -> %s\n", count, name.c_str(), url.c_str());
+    }
 
-    LiveStation st;
-    st.name = name;
-    st.url = url;
-    st.state = state;
-    st.language = lang;
-    st.isCustom = true;
-    runtimeStations.push_back(st);
-
-    Serial.printf("[STATIONS DB] Added Custom Station: '%s' -> %s\n", name.c_str(), url.c_str());
-
-    applyCategoryFilter(activeCatType, activeFilterVal.c_str());
-    if (list_categories) populateCategoryList();
-    if (list_stations) populateStationList();
+    initStationDatabase();
+    pendingStationListRefresh = true;
 }
 
 void deleteCustomStation(int customIdx) {
@@ -375,9 +409,7 @@ void deleteCustomStation(int customIdx) {
     prefs.end();
 
     initStationDatabase();
-    applyCategoryFilter(activeCatType, activeFilterVal.c_str());
-    if (list_categories) populateCategoryList();
-    if (list_stations) populateStationList();
+    pendingStationListRefresh = true;
 }
 
 // =============================================================================
@@ -511,6 +543,11 @@ void playCurrentStation() {
     prefs.end();
 
     // 1. Instantly update UI with the new station name and buffering state
+    activeTargetUrl = st.url;
+    streamRetryCount = 0;
+    isRetryingStream = false;
+    streamEstablished = false;
+
     currentError = ERR_NONE;
     alertMessage = "Connecting to live broadcast...";
     streamStartTime = millis();
@@ -870,6 +907,359 @@ void showWakeupPrompt() {
     bsp_display_unlock();
 }
 
+// =============================================================================
+// On-Device Auto-On Alarm & Sleep Timer Modal UI
+// =============================================================================
+static lv_obj_t* modal_timer_backdrop = NULL;
+static lv_obj_t* modal_timer_box = NULL;
+static lv_obj_t* btn_timer_en_toggle = NULL;
+static lv_obj_t* lbl_timer_en_status = NULL;
+static lv_obj_t* lbl_modal_h = NULL;
+static lv_obj_t* lbl_modal_m = NULL;
+static lv_obj_t* lbl_modal_ampm = NULL;
+static lv_obj_t* lbl_modal_dur = NULL;
+
+static bool edit_timer_en = false;
+static int edit_timer_h = 6;
+static int edit_timer_m = 0;
+static int edit_timer_dur_idx = 1;
+
+static const int PRESET_DURATIONS[] = {15, 30, 45, 60, 90, 120, 0};
+static const char* PRESET_DURATION_LABELS[] = {
+    "15 Minutes",
+    "30 Minutes",
+    "45 Minutes",
+    "60 Minutes",
+    "90 Minutes",
+    "120 Minutes",
+    "Continuous (No auto-off)"
+};
+static const int NUM_PRESET_DURATIONS = 7;
+
+static void update_timer_modal_display() {
+    if (!modal_timer_box) return;
+
+    if (lbl_timer_en_status && btn_timer_en_toggle) {
+        if (edit_timer_en) {
+            lv_label_set_text(lbl_timer_en_status, "ALARM: ENABLED");
+            lv_obj_set_style_bg_color(btn_timer_en_toggle, lv_color_hex(0x2E7D32), 0);
+        } else {
+            lv_label_set_text(lbl_timer_en_status, "ALARM: DISABLED");
+            lv_obj_set_style_bg_color(btn_timer_en_toggle, lv_color_hex(0x37474F), 0);
+        }
+    }
+
+    if (lbl_modal_h && lbl_modal_m && lbl_modal_ampm) {
+        int dispH = edit_timer_h;
+        const char* ampm = "AM";
+        if (dispH >= 12) {
+            ampm = "PM";
+            if (dispH > 12) dispH -= 12;
+        }
+        if (dispH == 0) dispH = 12;
+
+        char bufH[8], bufM[8];
+        snprintf(bufH, sizeof(bufH), "%02d", dispH);
+        snprintf(bufM, sizeof(bufM), "%02d", edit_timer_m);
+        lv_label_set_text(lbl_modal_h, bufH);
+        lv_label_set_text(lbl_modal_m, bufM);
+        lv_label_set_text(lbl_modal_ampm, ampm);
+    }
+
+    if (lbl_modal_dur) {
+        lv_label_set_text(lbl_modal_dur, PRESET_DURATION_LABELS[edit_timer_dur_idx]);
+    }
+}
+
+static void btn_timer_toggle_cb(lv_event_t* e) {
+    if (!isDebouncedTouch()) return;
+    edit_timer_en = !edit_timer_en;
+    update_timer_modal_display();
+}
+
+static void btn_timer_h_dec_cb(lv_event_t* e) {
+    if (!isDebouncedTouch(150)) return;
+    edit_timer_h--;
+    if (edit_timer_h < 0) edit_timer_h = 23;
+    update_timer_modal_display();
+}
+
+static void btn_timer_h_inc_cb(lv_event_t* e) {
+    if (!isDebouncedTouch(150)) return;
+    edit_timer_h++;
+    if (edit_timer_h > 23) edit_timer_h = 0;
+    update_timer_modal_display();
+}
+
+static void btn_timer_m_dec_cb(lv_event_t* e) {
+    if (!isDebouncedTouch(150)) return;
+    edit_timer_m -= 5;
+    if (edit_timer_m < 0) edit_timer_m = 55;
+    update_timer_modal_display();
+}
+
+static void btn_timer_m_inc_cb(lv_event_t* e) {
+    if (!isDebouncedTouch(150)) return;
+    edit_timer_m += 5;
+    if (edit_timer_m >= 60) edit_timer_m = 0;
+    update_timer_modal_display();
+}
+
+static void btn_timer_dur_prev_cb(lv_event_t* e) {
+    if (!isDebouncedTouch()) return;
+    edit_timer_dur_idx--;
+    if (edit_timer_dur_idx < 0) edit_timer_dur_idx = NUM_PRESET_DURATIONS - 1;
+    update_timer_modal_display();
+}
+
+static void btn_timer_dur_next_cb(lv_event_t* e) {
+    if (!isDebouncedTouch()) return;
+    edit_timer_dur_idx++;
+    if (edit_timer_dur_idx >= NUM_PRESET_DURATIONS) edit_timer_dur_idx = 0;
+    update_timer_modal_display();
+}
+
+static void btn_timer_cancel_cb(lv_event_t* e) {
+    if (!isDebouncedTouch()) return;
+    bsp_display_lock(0);
+    if (modal_timer_backdrop) {
+        lv_obj_del(modal_timer_backdrop);
+        modal_timer_backdrop = NULL;
+        modal_timer_box = NULL;
+    }
+    bsp_display_unlock();
+}
+
+void updateClockAndBatteryUI();
+
+static void btn_timer_save_cb(lv_event_t* e) {
+    if (!isDebouncedTouch()) return;
+    int selectedDur = PRESET_DURATIONS[edit_timer_dur_idx];
+    saveTimerSettings(edit_timer_en, edit_timer_h, edit_timer_m, selectedDur);
+
+    bsp_display_lock(0);
+    if (modal_timer_backdrop) {
+        lv_obj_del(modal_timer_backdrop);
+        modal_timer_backdrop = NULL;
+        modal_timer_box = NULL;
+    }
+    updateClockAndBatteryUI();
+    bsp_display_unlock();
+}
+
+void showTimerModal() {
+    if (modal_timer_backdrop) return;
+
+    edit_timer_en = timerEnabled;
+    edit_timer_h = timerHour;
+    edit_timer_m = timerMin;
+    edit_timer_dur_idx = 1;
+    for (int i = 0; i < NUM_PRESET_DURATIONS; i++) {
+        if (PRESET_DURATIONS[i] == timerDuration) {
+            edit_timer_dur_idx = i;
+            break;
+        }
+    }
+
+    bsp_display_lock(0);
+    lv_obj_t* scr = lv_scr_act();
+    modal_timer_backdrop = lv_obj_create(scr);
+    lv_obj_set_size(modal_timer_backdrop, 480, 320);
+    lv_obj_set_pos(modal_timer_backdrop, 0, 0);
+    lv_obj_set_style_bg_color(modal_timer_backdrop, lv_color_hex(0x000000), 0);
+    lv_obj_set_style_bg_opa(modal_timer_backdrop, LV_OPA_70, 0);
+    lv_obj_set_style_border_width(modal_timer_backdrop, 0, 0);
+    lv_obj_clear_flag(modal_timer_backdrop, LV_OBJ_FLAG_SCROLLABLE);
+
+    modal_timer_box = lv_obj_create(modal_timer_backdrop);
+    lv_obj_set_size(modal_timer_box, 400, 270);
+    lv_obj_center(modal_timer_box);
+    lv_obj_set_style_bg_color(modal_timer_box, lv_color_hex(0x10171E), 0);
+    lv_obj_set_style_border_color(modal_timer_box, lv_color_hex(0x00E5FF), 0);
+    lv_obj_set_style_border_width(modal_timer_box, 2, 0);
+    lv_obj_set_style_radius(modal_timer_box, 12, 0);
+    lv_obj_set_style_pad_all(modal_timer_box, 10, 0);
+    lv_obj_clear_flag(modal_timer_box, LV_OBJ_FLAG_SCROLLABLE);
+
+    // 1. Title
+    lv_obj_t* lbl_t = lv_label_create(modal_timer_box);
+    lv_label_set_text(lbl_t, LV_SYMBOL_BELL " Auto-On Alarm & Sleep Timer");
+    lv_obj_set_style_text_color(lbl_t, lv_color_hex(0xFFD54F), 0);
+    lv_obj_set_style_text_font(lbl_t, &lv_font_montserrat_16, 0);
+    lv_obj_align(lbl_t, LV_ALIGN_TOP_MID, 0, 0);
+
+    // 2. Enable / Disable Toggle Row
+    btn_timer_en_toggle = lv_btn_create(modal_timer_box);
+    lv_obj_set_size(btn_timer_en_toggle, 170, 32);
+    lv_obj_align(btn_timer_en_toggle, LV_ALIGN_TOP_MID, 0, 26);
+    lv_obj_set_style_radius(btn_timer_en_toggle, 8, 0);
+    lv_obj_add_event_cb(btn_timer_en_toggle, btn_timer_toggle_cb, LV_EVENT_CLICKED, NULL);
+
+    lbl_timer_en_status = lv_label_create(btn_timer_en_toggle);
+    lv_obj_set_style_text_font(lbl_timer_en_status, &lv_font_montserrat_12, 0);
+    lv_obj_set_style_text_color(lbl_timer_en_status, lv_color_hex(0xFFFFFF), 0);
+    lv_obj_center(lbl_timer_en_status);
+
+    // 3. Time Adjustment Controls Box
+    lv_obj_t* pnl_time = lv_obj_create(modal_timer_box);
+    lv_obj_set_size(pnl_time, 376, 52);
+    lv_obj_align(pnl_time, LV_ALIGN_TOP_MID, 0, 64);
+    lv_obj_set_style_bg_color(pnl_time, lv_color_hex(0x161B22), 0);
+    lv_obj_set_style_border_color(pnl_time, lv_color_hex(0x30363D), 0);
+    lv_obj_set_style_border_width(pnl_time, 1, 0);
+    lv_obj_set_style_radius(pnl_time, 8, 0);
+    lv_obj_set_style_pad_all(pnl_time, 4, 0);
+    lv_obj_clear_flag(pnl_time, LV_OBJ_FLAG_SCROLLABLE);
+
+    lv_obj_t* lbl_tlabel = lv_label_create(pnl_time);
+    lv_label_set_text(lbl_tlabel, "Time:");
+    lv_obj_set_style_text_color(lbl_tlabel, lv_color_hex(0x90A4AE), 0);
+    lv_obj_set_style_text_font(lbl_tlabel, &lv_font_montserrat_14, 0);
+    lv_obj_align(lbl_tlabel, LV_ALIGN_LEFT_MID, 6, 0);
+
+    lv_obj_t* btn_h_dec = lv_btn_create(pnl_time);
+    lv_obj_set_size(btn_h_dec, 34, 34);
+    lv_obj_align(btn_h_dec, LV_ALIGN_LEFT_MID, 56, 0);
+    lv_obj_set_style_bg_color(btn_h_dec, lv_color_hex(0x21262D), 0);
+    lv_obj_add_event_cb(btn_h_dec, btn_timer_h_dec_cb, LV_EVENT_CLICKED, NULL);
+    lv_obj_t* l_h_d = lv_label_create(btn_h_dec);
+    lv_label_set_text(l_h_d, "-");
+    lv_obj_set_style_text_font(l_h_d, &lv_font_montserrat_18, 0);
+    lv_obj_center(l_h_d);
+
+    lbl_modal_h = lv_label_create(pnl_time);
+    lv_obj_set_style_text_font(lbl_modal_h, &lv_font_montserrat_20, 0);
+    lv_obj_set_style_text_color(lbl_modal_h, lv_color_hex(0xFFD54F), 0);
+    lv_obj_align(lbl_modal_h, LV_ALIGN_LEFT_MID, 98, 0);
+
+    lv_obj_t* btn_h_inc = lv_btn_create(pnl_time);
+    lv_obj_set_size(btn_h_inc, 34, 34);
+    lv_obj_align(btn_h_inc, LV_ALIGN_LEFT_MID, 130, 0);
+    lv_obj_set_style_bg_color(btn_h_inc, lv_color_hex(0x21262D), 0);
+    lv_obj_add_event_cb(btn_h_inc, btn_timer_h_inc_cb, LV_EVENT_CLICKED, NULL);
+    lv_obj_t* l_h_i = lv_label_create(btn_h_inc);
+    lv_label_set_text(l_h_i, "+");
+    lv_obj_set_style_text_font(l_h_i, &lv_font_montserrat_18, 0);
+    lv_obj_center(l_h_i);
+
+    lv_obj_t* lbl_colon = lv_label_create(pnl_time);
+    lv_label_set_text(lbl_colon, ":");
+    lv_obj_set_style_text_font(lbl_colon, &lv_font_montserrat_20, 0);
+    lv_obj_set_style_text_color(lbl_colon, lv_color_hex(0x00E5FF), 0);
+    lv_obj_align(lbl_colon, LV_ALIGN_LEFT_MID, 172, 0);
+
+    lv_obj_t* btn_m_dec = lv_btn_create(pnl_time);
+    lv_obj_set_size(btn_m_dec, 34, 34);
+    lv_obj_align(btn_m_dec, LV_ALIGN_LEFT_MID, 186, 0);
+    lv_obj_set_style_bg_color(btn_m_dec, lv_color_hex(0x21262D), 0);
+    lv_obj_add_event_cb(btn_m_dec, btn_timer_m_dec_cb, LV_EVENT_CLICKED, NULL);
+    lv_obj_t* l_m_d = lv_label_create(btn_m_dec);
+    lv_label_set_text(l_m_d, "-");
+    lv_obj_set_style_text_font(l_m_d, &lv_font_montserrat_18, 0);
+    lv_obj_center(l_m_d);
+
+    lbl_modal_m = lv_label_create(pnl_time);
+    lv_obj_set_style_text_font(lbl_modal_m, &lv_font_montserrat_20, 0);
+    lv_obj_set_style_text_color(lbl_modal_m, lv_color_hex(0xFFD54F), 0);
+    lv_obj_align(lbl_modal_m, LV_ALIGN_LEFT_MID, 228, 0);
+
+    lv_obj_t* btn_m_inc = lv_btn_create(pnl_time);
+    lv_obj_set_size(btn_m_inc, 34, 34);
+    lv_obj_align(btn_m_inc, LV_ALIGN_LEFT_MID, 260, 0);
+    lv_obj_set_style_bg_color(btn_m_inc, lv_color_hex(0x21262D), 0);
+    lv_obj_add_event_cb(btn_m_inc, btn_timer_m_inc_cb, LV_EVENT_CLICKED, NULL);
+    lv_obj_t* l_m_i = lv_label_create(btn_m_inc);
+    lv_label_set_text(l_m_i, "+");
+    lv_obj_set_style_text_font(l_m_i, &lv_font_montserrat_18, 0);
+    lv_obj_center(l_m_i);
+
+    lbl_modal_ampm = lv_label_create(pnl_time);
+    lv_obj_set_style_text_font(lbl_modal_ampm, &lv_font_montserrat_16, 0);
+    lv_obj_set_style_text_color(lbl_modal_ampm, lv_color_hex(0x00E5FF), 0);
+    lv_obj_align(lbl_modal_ampm, LV_ALIGN_RIGHT_MID, -8, 0);
+
+    // 4. Play Duration Selector Box
+    lv_obj_t* pnl_dur = lv_obj_create(modal_timer_box);
+    lv_obj_set_size(pnl_dur, 376, 52);
+    lv_obj_align(pnl_dur, LV_ALIGN_TOP_MID, 0, 122);
+    lv_obj_set_style_bg_color(pnl_dur, lv_color_hex(0x161B22), 0);
+    lv_obj_set_style_border_color(pnl_dur, lv_color_hex(0x30363D), 0);
+    lv_obj_set_style_border_width(pnl_dur, 1, 0);
+    lv_obj_set_style_radius(pnl_dur, 8, 0);
+    lv_obj_set_style_pad_all(pnl_dur, 4, 0);
+    lv_obj_clear_flag(pnl_dur, LV_OBJ_FLAG_SCROLLABLE);
+
+    lv_obj_t* lbl_dlabel = lv_label_create(pnl_dur);
+    lv_label_set_text(lbl_dlabel, "Duration:");
+    lv_obj_set_style_text_color(lbl_dlabel, lv_color_hex(0x90A4AE), 0);
+    lv_obj_set_style_text_font(lbl_dlabel, &lv_font_montserrat_14, 0);
+    lv_obj_align(lbl_dlabel, LV_ALIGN_LEFT_MID, 6, 0);
+
+    lv_obj_t* btn_dur_prev = lv_btn_create(pnl_dur);
+    lv_obj_set_size(btn_dur_prev, 34, 34);
+    lv_obj_align(btn_dur_prev, LV_ALIGN_LEFT_MID, 86, 0);
+    lv_obj_set_style_bg_color(btn_dur_prev, lv_color_hex(0x21262D), 0);
+    lv_obj_add_event_cb(btn_dur_prev, btn_timer_dur_prev_cb, LV_EVENT_CLICKED, NULL);
+    lv_obj_t* l_dp = lv_label_create(btn_dur_prev);
+    lv_label_set_text(l_dp, "<");
+    lv_obj_set_style_text_font(l_dp, &lv_font_montserrat_16, 0);
+    lv_obj_center(l_dp);
+
+    lv_obj_t* btn_dur_click = lv_btn_create(pnl_dur);
+    lv_obj_set_size(btn_dur_click, 206, 34);
+    lv_obj_align(btn_dur_click, LV_ALIGN_LEFT_MID, 126, 0);
+    lv_obj_set_style_bg_color(btn_dur_click, lv_color_hex(0x0D1117), 0);
+    lv_obj_set_style_border_color(btn_dur_click, lv_color_hex(0x00E5FF), 0);
+    lv_obj_set_style_border_width(btn_dur_click, 1, 0);
+    lv_obj_add_event_cb(btn_dur_click, btn_timer_dur_next_cb, LV_EVENT_CLICKED, NULL);
+
+    lbl_modal_dur = lv_label_create(btn_dur_click);
+    lv_obj_set_style_text_font(lbl_modal_dur, &lv_font_montserrat_12, 0);
+    lv_obj_set_style_text_color(lbl_modal_dur, lv_color_hex(0xFFFFFF), 0);
+    lv_obj_center(lbl_modal_dur);
+
+    lv_obj_t* btn_dur_next = lv_btn_create(pnl_dur);
+    lv_obj_set_size(btn_dur_next, 34, 34);
+    lv_obj_align(btn_dur_next, LV_ALIGN_RIGHT_MID, -2, 0);
+    lv_obj_set_style_bg_color(btn_dur_next, lv_color_hex(0x21262D), 0);
+    lv_obj_add_event_cb(btn_dur_next, btn_timer_dur_next_cb, LV_EVENT_CLICKED, NULL);
+    lv_obj_t* l_dn = lv_label_create(btn_dur_next);
+    lv_label_set_text(l_dn, ">");
+    lv_obj_set_style_text_font(l_dn, &lv_font_montserrat_16, 0);
+    lv_obj_center(l_dn);
+
+    // 5. Action Buttons (Cancel / Save)
+    lv_obj_t* btn_cancel = lv_btn_create(modal_timer_box);
+    lv_obj_set_size(btn_cancel, 120, 38);
+    lv_obj_align(btn_cancel, LV_ALIGN_BOTTOM_LEFT, 16, -4);
+    lv_obj_set_style_bg_color(btn_cancel, lv_color_hex(0x37474F), 0);
+    lv_obj_set_style_radius(btn_cancel, 8, 0);
+    lv_obj_add_event_cb(btn_cancel, btn_timer_cancel_cb, LV_EVENT_CLICKED, NULL);
+    lv_obj_t* l_c = lv_label_create(btn_cancel);
+    lv_label_set_text(l_c, "Cancel");
+    lv_obj_set_style_text_font(l_c, &lv_font_montserrat_14, 0);
+    lv_obj_center(l_c);
+
+    lv_obj_t* btn_save = lv_btn_create(modal_timer_box);
+    lv_obj_set_size(btn_save, 160, 38);
+    lv_obj_align(btn_save, LV_ALIGN_BOTTOM_RIGHT, -16, -4);
+    lv_obj_set_style_bg_color(btn_save, lv_color_hex(0x00897B), 0);
+    lv_obj_set_style_radius(btn_save, 8, 0);
+    lv_obj_add_event_cb(btn_save, btn_timer_save_cb, LV_EVENT_CLICKED, NULL);
+    lv_obj_t* l_s = lv_label_create(btn_save);
+    lv_label_set_text(l_s, "💾 Save Alarm");
+    lv_obj_set_style_text_font(l_s, &lv_font_montserrat_14, 0);
+    lv_obj_center(l_s);
+
+    update_timer_modal_display();
+    bsp_display_unlock();
+}
+
+static void clock_card_clicked_cb(lv_event_t* e) {
+    if (!isDebouncedTouch()) return;
+    showTimerModal();
+}
+
 static void btn_sleep_cb(lv_event_t* e) {
     if (!isDebouncedTouch()) return;
     openPowerOffPrompt();
@@ -1170,6 +1560,41 @@ static void clock_timer_cb(lv_timer_t* timer) {
         }
         lv_label_set_text(lbl_battery, batBuf);
     }
+
+    // 3. Update Auto-On Alarm & Sleep Timer Badge
+    if (lbl_timer_badge) {
+        char tmBuf[32];
+        if (timerEnabled) {
+            const char* durStr = "";
+            if (timerDuration == 0) durStr = "Cont";
+            else if (timerDuration == 15) durStr = "15m";
+            else if (timerDuration == 30) durStr = "30m";
+            else if (timerDuration == 45) durStr = "45m";
+            else if (timerDuration == 60) durStr = "60m";
+            else if (timerDuration == 90) durStr = "90m";
+            else if (timerDuration == 120) durStr = "120m";
+            else durStr = "Set";
+
+            int dispH = timerHour;
+            const char* ampm = "AM";
+            if (dispH >= 12) {
+                ampm = "PM";
+                if (dispH > 12) dispH -= 12;
+            }
+            if (dispH == 0) dispH = 12;
+
+            snprintf(tmBuf, sizeof(tmBuf), LV_SYMBOL_BELL " %d:%02d%s\n(%s)", dispH, timerMin, ampm, durStr);
+            lv_obj_set_style_text_color(lbl_timer_badge, lv_color_hex(0x00E5FF), 0);
+        } else {
+            snprintf(tmBuf, sizeof(tmBuf), LV_SYMBOL_BELL " OFF\n(Tap)");
+            lv_obj_set_style_text_color(lbl_timer_badge, lv_color_hex(0x8B949E), 0);
+        }
+        lv_label_set_text(lbl_timer_badge, tmBuf);
+    }
+}
+
+void updateClockAndBatteryUI() {
+    clock_timer_cb(NULL);
 }
 
 // -----------------------------------------------------------------------------
@@ -1518,27 +1943,36 @@ void buildModernUI() {
     lv_obj_set_style_radius(pnl_clock_card, 10, 0);
     lv_obj_set_style_pad_all(pnl_clock_card, 2, 0);
     lv_obj_clear_flag(pnl_clock_card, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_flag(pnl_clock_card, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_event_cb(pnl_clock_card, clock_card_clicked_cb, LV_EVENT_CLICKED, NULL);
 
     // 1. Giant Live Time (Left side)
     lbl_clock = lv_label_create(pnl_clock_card);
     lv_label_set_text(lbl_clock, "--:--");
     lv_obj_set_style_text_color(lbl_clock, lv_color_hex(0xFFD54F), 0);
     lv_obj_set_style_text_font(lbl_clock, &lv_font_montserrat_32, 0);
-    lv_obj_align(lbl_clock, LV_ALIGN_LEFT_MID, 8, 0);
+    lv_obj_align(lbl_clock, LV_ALIGN_LEFT_MID, 6, 0);
 
-    // 2. Date & Day (Center area)
+    // 2. Date & Day (Center-left area)
     lbl_date_day = lv_label_create(pnl_clock_card);
     lv_label_set_text(lbl_date_day, "Friday\n04 Sep 2026");
     lv_obj_set_style_text_color(lbl_date_day, lv_color_hex(0x90A4AE), 0);
     lv_obj_set_style_text_font(lbl_date_day, &lv_font_montserrat_12, 0);
-    lv_obj_align(lbl_date_day, LV_ALIGN_LEFT_MID, 172, 0);
+    lv_obj_align(lbl_date_day, LV_ALIGN_LEFT_MID, 155, 0);
 
-    // 3. Live Battery Gauge & Charging Indicator (Right side)
+    // 3. Interactive Auto-On Alarm / Sleep Timer Badge (Center-right area)
+    lbl_timer_badge = lv_label_create(pnl_clock_card);
+    lv_label_set_text(lbl_timer_badge, LV_SYMBOL_BELL " OFF\n(Tap)");
+    lv_obj_set_style_text_color(lbl_timer_badge, lv_color_hex(0x8B949E), 0);
+    lv_obj_set_style_text_font(lbl_timer_badge, &lv_font_montserrat_12, 0);
+    lv_obj_align(lbl_timer_badge, LV_ALIGN_LEFT_MID, 252, 0);
+
+    // 4. Live Battery Gauge & Charging Indicator (Right side)
     lbl_battery = lv_label_create(pnl_clock_card);
-    lv_label_set_text(lbl_battery, "🔋 100%");
+    lv_label_set_text(lbl_battery, LV_SYMBOL_BATTERY_FULL " 100%");
     lv_obj_set_style_text_color(lbl_battery, lv_color_hex(0x00E676), 0);
     lv_obj_set_style_text_font(lbl_battery, &lv_font_montserrat_14, 0);
-    lv_obj_align(lbl_battery, LV_ALIGN_RIGHT_MID, -10, 0);
+    lv_obj_align(lbl_battery, LV_ALIGN_RIGHT_MID, -8, 0);
 
     // =========================================================================
     // TAB 2: STATIONS BROWSER (SPLIT PANEL + PAGINATION)
@@ -2147,6 +2581,9 @@ void audio_msg_handler(Audio::msg_t m) {
     }
     if (m.e == Audio::evt_info || m.e == Audio::evt_bitrate || m.e == Audio::evt_name || m.e == Audio::evt_streamtitle) {
         currentError = ERR_NONE;
+        streamEstablished = true;
+        streamRetryCount = 0;
+        isRetryingStream = false;
         if (isBuffering) {
             isBuffering = false;
             uiNeedsUpdate = true;
@@ -2178,8 +2615,105 @@ void loadSavedSettings() {
     if (savedStation >= 0 && savedStation < (int)runtimeStations.size()) {
         currentFilterPosition = savedStation;
     }
+
+    loadTimerSettings();
 }
 
+void loadTimerSettings() {
+    prefs.begin("radio_timer", true);
+    timerEnabled = prefs.getBool("en", false);
+    timerHour = prefs.getInt("h", 6);
+    timerMin = prefs.getInt("m", 0);
+    timerDuration = prefs.getInt("dur", 30);
+    prefs.end();
+    Serial.printf("[TIMER] Loaded Auto-On Alarm: Enabled=%d, Time=%02d:%02d, Dur=%d min\n", 
+                  timerEnabled, timerHour, timerMin, timerDuration);
+}
+
+void saveTimerSettings(bool en, int h, int m, int dur) {
+    prefs.begin("radio_timer", false);
+    prefs.putBool("en", en);
+    prefs.putInt("h", h);
+    prefs.putInt("m", m);
+    prefs.putInt("dur", dur);
+    prefs.end();
+    timerEnabled = en;
+    timerHour = h;
+    timerMin = m;
+    timerDuration = dur;
+    Serial.printf("[TIMER] Saved Auto-On Alarm: Enabled=%d, Time=%02d:%02d, Dur=%d min\n", 
+                  timerEnabled, timerHour, timerMin, timerDuration);
+}
+
+void checkAutoOnTimer() {
+    // 1. Check if alarm playback duration has expired (Auto-Off)
+    if (alarmActivePlaying && (timerDuration > 0)) {
+        if (millis() >= alarmAutoOffExpiryMs) {
+            Serial.println("[TIMER] Auto-off duration expired! Stopping playback and turning off display backlight...");
+            alarmActivePlaying = false;
+            if (isPlaying) {
+                audio.stopSong();
+                isPlaying = false;
+                isBuffering = false;
+                updatePlayerUI();
+            }
+            digitalWrite(TFT_BLK, 1 - TFT_BLK_ON_LEVEL); // Turn off backlight
+            return;
+        }
+    }
+
+    if (!timerEnabled) return;
+    time_t now;
+    struct tm timeinfo;
+    time(&now);
+    localtime_r(&now, &timeinfo);
+    if (timeinfo.tm_year < (2020 - 1900)) return; // NTP not yet synchronized
+
+    if (timeinfo.tm_hour == timerHour && timeinfo.tm_min == timerMin) {
+        if (lastTimerTriggerDay != timeinfo.tm_yday) {
+            lastTimerTriggerDay = timeinfo.tm_yday;
+            Serial.printf("[TIMER ALARM] Triggering Auto-On Alarm at %02d:%02d (Duration: %d min)!\n", 
+                          timerHour, timerMin, timerDuration);
+            // Ensure display backlight is turned on
+            digitalWrite(TFT_BLK, TFT_BLK_ON_LEVEL);
+            // Ensure unmuted
+            if (isMuted) {
+                toggleMute();
+            }
+            // Start playing last station if not already playing
+            if (!isPlaying && !filteredIndices.empty()) {
+                currentSource = SRC_RADIO;
+                playCurrentStation();
+            }
+            // Arm auto-off countdown if duration > 0
+            if (timerDuration > 0) {
+                alarmActivePlaying = true;
+                alarmAutoOffExpiryMs = millis() + ((uint32_t)timerDuration * 60000UL);
+                Serial.printf("[TIMER ALARM] Auto-off scheduled in %d minutes\n", timerDuration);
+            } else {
+                alarmActivePlaying = false;
+                Serial.println("[TIMER ALARM] Continuous playback (no auto-off scheduled)");
+            }
+        }
+    }
+}
+
+static String escapeJson(const String& s) {
+    String out = "";
+    out.reserve(s.length() + 8);
+    for (size_t i = 0; i < s.length(); i++) {
+        char c = s[i];
+        if (c == '"') out += "\\\"";
+        else if (c == '\\') out += "\\\\";
+        else if (c == '\n') out += "\\n";
+        else if (c == '\r') out += "\\r";
+        else if (c == '\t') out += "\\t";
+        else out += c;
+    }
+    return out;
+}
+
+// Static Web Remote HTML/CSS/JS (Stored in Flash Memory - Zero RAM, Instant <2ms delivery)
 // Static Web Remote HTML/CSS/JS (Stored in Flash Memory - Zero RAM, Instant <2ms delivery)
 const char PAGE_INDEX[] PROGMEM = R"rawliteral(<!DOCTYPE html>
 <html>
@@ -2203,7 +2737,7 @@ h3{margin:6px 0 4px;color:#f0f6fc;font-size:18px;white-space:nowrap;overflow:hid
 .btn:active{transform:scale(0.97);}
 .btn-blue{background:#1f6feb;color:#fff;border-color:#388bfd;}
 .btn-blue:hover{background:#388bfd;}
-select,input[type=text],input[type=password],input[type=url]{width:100%;box-sizing:border-box;padding:10px;margin:6px 0;background:#0d1117;color:#f0f6fc;border:1px solid #30363d;border-radius:6px;font-size:14px;}
+select,input[type=text],input[type=password],input[type=url],input[type=time]{width:100%;box-sizing:border-box;padding:10px;margin:6px 0;background:#0d1117;color:#f0f6fc;border:1px solid #30363d;border-radius:6px;font-size:14px;}
 select:focus,input:focus{outline:none;border-color:#58a6ff;}
 #toast{position:fixed;top:14px;left:50%;transform:translateX(-50%);background:#58a6ff;color:#0d1117;padding:8px 18px;border-radius:20px;font-weight:bold;font-size:13px;display:none;z-index:99;box-shadow:0 4px 16px rgba(0,0,0,0.6);}
 </style>
@@ -2231,52 +2765,56 @@ select:focus,input:focus{outline:none;border-color:#58a6ff;}
 </div>
 
 <div class="box">
-  <div style="font-weight:600;color:#ffd54f;margin-bottom:6px;text-align:left;">➕ Add Custom Station</div>
-  <form method="POST" action="/add_station">
-    <input type="text" name="name" placeholder="Station Name (e.g. Club FM)" required>
-    <input type="url" name="url" placeholder="Stream URL (http://...)" required>
-    <input type="text" name="state" placeholder="State (e.g. Kerala)">
-    <input type="text" name="lang" placeholder="Language (e.g. Malayalam)">
-    <button type="submit" class="btn btn-blue" style="width:100%;margin-top:8px;">➕ Save Station</button>
-  </form>
+  <div style="font-weight:600;color:#58a6ff;margin-bottom:8px;text-align:left;">⏰ Auto-On Alarm & Sleep Timer</div>
+  <div class="row" style="margin:8px 0;gap:10px;">
+    <input type="time" id="tm_val" value="06:30" style="flex:1;font-size:16px;padding:8px;text-align:center;">
+    <label style="display:flex;align-items:center;gap:6px;font-size:14px;cursor:pointer;color:#f0f6fc;">
+      <input type="checkbox" id="tm_en" style="width:18px;height:18px;"> Enable
+    </label>
+  </div>
+  <div style="margin:8px 0 10px;text-align:left;">
+    <label style="font-size:12px;color:#8b949e;display:block;margin-bottom:4px;">Auto-Off Duration (Playback limit):</label>
+    <select id="tm_dur" style="width:100%;padding:8px;font-size:14px;background:#0d1117;color:#f0f6fc;border:1px solid #30363d;border-radius:6px;">
+      <option value="15">15 Minutes</option>
+      <option value="30" selected>30 Minutes</option>
+      <option value="45">45 Minutes</option>
+      <option value="60">60 Minutes</option>
+      <option value="90">90 Minutes</option>
+      <option value="120">120 Minutes</option>
+      <option value="0">Continuous (No Auto-Off)</option>
+    </select>
+  </div>
+  <button type="button" class="btn btn-blue" style="width:100%;margin-top:4px;" onclick="saveTimer()">💾 Save Alarm & Duration</button>
 </div>
 
 <div class="box">
-  <div style="font-weight:600;color:#ffd54f;margin-bottom:6px;text-align:left;">📶 Wi-Fi Settings</div>
-  <div style="display:flex;gap:10px;margin-bottom:8px;">
-    <button type="button" class="btn" style="flex:1;" id="btn_scan" onclick="scanWiFi()">🔍 Scan Wi-Fi</button>
-  </div>
-  <select id="ssid_list" style="display:none;margin-bottom:8px;" onchange="document.getElementById('ssid_in').value=this.value"></select>
-  <form method="POST" action="/save_wifi">
-    <input type="text" name="ssid" id="ssid_in" placeholder="Wi-Fi SSID" required>
-    <input type="password" name="pass" placeholder="Password">
-    <button type="submit" class="btn" style="width:100%;margin-top:8px;background:#30363d;color:#fff;">💾 Save & Restart</button>
-  </form>
+  <div id="cs_title" style="font-weight:600;color:#ffd54f;margin-bottom:8px;text-align:left;">➕ Add Custom Station</div>
+  <input type="hidden" id="cs_idx" value="-1">
+  <input type="text" id="cs_name" placeholder="Station Name (e.g. Club FM)" required>
+  <input type="text" id="cs_url" placeholder="Stream URL (http://... or https://...)" required>
+  <input type="text" id="cs_state" placeholder="State (e.g. Kerala)">
+  <input type="text" id="cs_lang" placeholder="Language (e.g. Malayalam)">
+  <label style="display:block;margin:6px 0 8px;font-size:13px;color:#c9d1d9;text-align:left;cursor:pointer;">
+    <input type="checkbox" id="cs_play_now"> ▶ Play this station immediately
+  </label>
+  <button type="button" id="cs_submit_btn" class="btn btn-blue" style="width:100%;margin-top:4px;" onclick="submitCustomStation()">➕ Save Station</button>
+  <button type="button" id="cs_cancel_btn" class="btn" style="width:100%;margin-top:6px;display:none;" onclick="cancelEditStation()">Cancel Edit</button>
+</div>
+
+<div class="box">
+  <div style="font-weight:600;color:#58a6ff;margin-bottom:8px;text-align:left;">⭐ My Custom Stations (User)</div>
+  <div id="cs_list" style="text-align:left;">Loading stations...</div>
 </div>
 
 <script>
 let tTimer=null;
-function showToast(m){let e=document.getElementById('toast');e.innerText=m;e.style.display='block';if(tTimer)clearTimeout(tTimer);tTimer=setTimeout(()=>e.style.display='none',2000);}
-function scanWiFi(){
-  let btn=document.getElementById('btn_scan');
-  let sel=document.getElementById('ssid_list');
-  btn.innerText='⏳ Scanning...';
-  btn.disabled=true;
-  fetch('/api/scan_wifi').then(r=>r.json()).then(list=>{
-    sel.innerHTML='<option value="" disabled selected>Select Network</option>'+list.map(s=>`<option value="${s}">${s}</option>`).join('');
-    sel.style.display='block';
-    btn.innerText='🔍 Scan Wi-Fi';
-    btn.disabled=false;
-  }).catch(()=>{
-    showToast('Scan failed');
-    btn.innerText='🔍 Scan Wi-Fi';
-    btn.disabled=false;
-  });
-}
+function showToast(m){let e=document.getElementById('toast');e.innerText=m;e.style.display='block';if(tTimer)clearTimeout(tTimer);tTimer=setTimeout(()=>e.style.display='none',2500);}
+
 function sendCmd(a,msg){
   if(msg)showToast(msg);
   fetch('/api/cmd?action='+a).then(()=>setTimeout(syncStatus,150)).catch(()=>{});
 }
+
 let vTimer=null;
 function sendVol(v){
   document.getElementById('v_val').innerText=Math.round((v/21)*100)+'%';
@@ -2301,7 +2839,118 @@ function syncStatus(){
   }).catch(()=>{});
 }
 
+// Alarm Timer
+function loadTimer(){
+  fetch('/api/timer').then(r=>r.json()).then(d=>{
+    document.getElementById('tm_en').checked=d.enabled;
+    let h=('0'+d.hour).slice(-2);
+    let m=('0'+d.min).slice(-2);
+    document.getElementById('tm_val').value=h+':'+m;
+    if(d.dur!==undefined)document.getElementById('tm_dur').value=d.dur;
+  }).catch(()=>{});
+}
+
+function saveTimer(){
+  let en=document.getElementById('tm_en').checked?1:0;
+  let val=document.getElementById('tm_val').value||'06:30';
+  let dur=document.getElementById('tm_dur').value||'30';
+  let parts=val.split(':');
+  let h=parseInt(parts[0],10)||0;
+  let m=parseInt(parts[1],10)||0;
+  fetch('/api/timer?en='+en+'&h='+h+'&m='+m+'&dur='+dur).then(r=>r.json()).then(d=>{
+    let durTxt=(dur=='0'?'Continuous':dur+'m');
+    showToast(en?'⏰ Alarm Set ('+val+', '+durTxt+')':'⏰ Alarm Disabled');
+  }).catch(()=>showToast('Failed to save timer'));
+}
+
+// Custom Stations Management
+function loadCustomStations(){
+  fetch('/api/custom_stations').then(r=>r.json()).then(list=>{
+    let el=document.getElementById('cs_list');
+    if(!list||list.length===0){
+      el.innerHTML='<div style="color:#8b949e;font-size:13px;padding:6px 0;">No custom stations added yet. Add one above!</div>';
+      return;
+    }
+    el.innerHTML=list.map(s=>`
+      <div style="background:#0d1117;border:1px solid #30363d;border-radius:8px;padding:10px;margin-bottom:8px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+          <div style="font-weight:bold;color:#f0f6fc;font-size:14px;">${s.name}</div>
+          <span style="font-size:11px;color:#58a6ff;background:#161b22;padding:2px 8px;border-radius:10px;">${s.state||'User'}</span>
+        </div>
+        <div style="color:#8b949e;font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin:4px 0 8px;">${s.url}</div>
+        <div style="display:flex;gap:6px;">
+          <button type="button" class="btn btn-blue" style="padding:6px 12px;font-size:12px;" onclick="playStationRealIdx(${s.real_idx})">▶ Play</button>
+          <button type="button" class="btn" style="padding:6px 12px;font-size:12px;" onclick="editStation(${s.idx},'${encodeURIComponent(s.name)}','${encodeURIComponent(s.url)}','${encodeURIComponent(s.state)}','${encodeURIComponent(s.lang)}')">✏ Edit</button>
+          <button type="button" class="btn" style="padding:6px 12px;font-size:12px;color:#ff7b72;" onclick="delStation(${s.idx},'${encodeURIComponent(s.name)}')">🗑 Delete</button>
+        </div>
+      </div>
+    `).join('');
+  }).catch(()=>{
+    document.getElementById('cs_list').innerHTML='<div style="color:#8b949e;font-size:12px;">Failed to load custom stations</div>';
+  });
+}
+
+function submitCustomStation(){
+  let name=document.getElementById('cs_name').value.trim();
+  let url=document.getElementById('cs_url').value.trim();
+  let state=document.getElementById('cs_state').value.trim();
+  let lang=document.getElementById('cs_lang').value.trim();
+  let idx=document.getElementById('cs_idx').value;
+  let playNow=document.getElementById('cs_play_now').checked?1:0;
+  if(!name||!url){showToast('Please enter Name and URL');return;}
+  let body='name='+encodeURIComponent(name)+'&url='+encodeURIComponent(url)+'&state='+encodeURIComponent(state)+'&lang='+encodeURIComponent(lang)+'&idx='+idx+'&play='+playNow;
+  fetch('/add_station',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:body})
+  .then(r=>r.json()).then(d=>{
+    showToast(idx>=0?'✅ Station Updated!':'✅ Station Added!');
+    cancelEditStation();
+    loadCustomStations();
+    setTimeout(syncStatus, 300);
+  }).catch(()=>{
+    showToast('Station saved');
+    cancelEditStation();
+    setTimeout(loadCustomStations, 500);
+  });
+}
+
+function editStation(idx,name,url,state,lang){
+  document.getElementById('cs_idx').value=idx;
+  document.getElementById('cs_name').value=decodeURIComponent(name);
+  document.getElementById('cs_url').value=decodeURIComponent(url);
+  document.getElementById('cs_state').value=decodeURIComponent(state);
+  document.getElementById('cs_lang').value=decodeURIComponent(lang);
+  document.getElementById('cs_title').innerText='✏ Edit Custom Station';
+  document.getElementById('cs_submit_btn').innerText='💾 Update Station';
+  document.getElementById('cs_cancel_btn').style.display='block';
+  document.getElementById('cs_name').focus();
+}
+
+function cancelEditStation(){
+  document.getElementById('cs_idx').value='-1';
+  document.getElementById('cs_name').value='';
+  document.getElementById('cs_url').value='';
+  document.getElementById('cs_state').value='';
+  document.getElementById('cs_lang').value='';
+  document.getElementById('cs_title').innerText='➕ Add Custom Station';
+  document.getElementById('cs_submit_btn').innerText='➕ Save Station';
+  document.getElementById('cs_cancel_btn').style.display='none';
+}
+
+function delStation(idx,name){
+  if(!confirm('Delete '+decodeURIComponent(name)+'?'))return;
+  fetch('/api/del_station?idx='+idx).then(()=> {
+    showToast('🗑 Station Deleted');
+    loadCustomStations();
+  }).catch(()=>showToast('Delete failed'));
+}
+
+function playStationRealIdx(realIdx){
+  showToast('Tuning in...');
+  fetch('/api/cmd?action=play&id='+realIdx).then(()=>setTimeout(syncStatus,200)).catch(()=>{});
+}
+
 syncStatus();
+loadTimer();
+loadCustomStations();
 setInterval(syncStatus, 2000);
 </script>
 </body>
@@ -2317,6 +2966,28 @@ enum PendingWebAction {
 volatile PendingWebAction pendingWebAction = ACT_NONE;
 volatile int pendingStationId = -1;
 volatile int pendingVol = -1;
+
+struct PendingCustomStation {
+    char name[64];
+    char url[256];
+    char state[48];
+    char lang[48];
+    int editIdx;
+    bool playNow;
+    volatile bool pending;
+};
+static PendingCustomStation pendingAddStation = { "", "", "", "", -1, false, false };
+
+volatile int pendingDeleteStationIdx = -1;
+
+struct PendingTimerSave {
+    bool en;
+    int h;
+    int m;
+    int dur;
+    volatile bool pending;
+};
+static PendingTimerSave pendingTimerSave = { false, 6, 0, 30, false };
 
 static esp_err_t http_root_handler(httpd_req_t *req) {
     Serial.println("[HTTPD] Serving / (PAGE_INDEX)");
@@ -2422,6 +3093,71 @@ static void url_decode_str(char *dst, const char *src) {
     *dst = '\0';
 }
 
+static esp_err_t http_timer_handler(httpd_req_t *req) {
+    char query[96] = {0};
+    if (httpd_req_get_url_query_str(req, query, sizeof(query)) == ESP_OK) {
+        char val_en[8] = {0}, val_h[8] = {0}, val_m[8] = {0}, val_dur[8] = {0};
+        bool has_en = (httpd_query_key_value(query, "en", val_en, sizeof(val_en)) == ESP_OK);
+        bool has_h = (httpd_query_key_value(query, "h", val_h, sizeof(val_h)) == ESP_OK);
+        bool has_m = (httpd_query_key_value(query, "m", val_m, sizeof(val_m)) == ESP_OK);
+        bool has_dur = (httpd_query_key_value(query, "dur", val_dur, sizeof(val_dur)) == ESP_OK);
+        if (has_en && has_h && has_m) {
+            int d = has_dur ? atoi(val_dur) : timerDuration;
+            pendingTimerSave.en = (atoi(val_en) != 0);
+            pendingTimerSave.h = atoi(val_h);
+            pendingTimerSave.m = atoi(val_m);
+            pendingTimerSave.dur = d;
+            pendingTimerSave.pending = true;
+            timerEnabled = pendingTimerSave.en;
+            timerHour = pendingTimerSave.h;
+            timerMin = pendingTimerSave.m;
+            timerDuration = pendingTimerSave.dur;
+        }
+    }
+    char buf[160];
+    snprintf(buf, sizeof(buf), "{\"enabled\":%s,\"hour\":%d,\"min\":%d,\"dur\":%d}",
+             timerEnabled ? "true" : "false", timerHour, timerMin, timerDuration);
+    httpd_resp_set_type(req, "application/json");
+    httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
+    return httpd_resp_send(req, buf, HTTPD_RESP_USE_STRLEN);
+}
+
+static esp_err_t http_custom_stations_handler(httpd_req_t *req) {
+    String json = "[";
+    int cIdx = 0;
+    for (size_t i = 0; i < runtimeStations.size(); i++) {
+        if (runtimeStations[i].isCustom) {
+            if (cIdx > 0) json += ",";
+            json += "{\"idx\":" + String(cIdx) + 
+                    ",\"real_idx\":" + String((int)i) +
+                    ",\"name\":\"" + escapeJson(runtimeStations[i].name) + "\"" +
+                    ",\"url\":\"" + escapeJson(runtimeStations[i].url) + "\"" +
+                    ",\"state\":\"" + escapeJson(runtimeStations[i].state) + "\"" +
+                    ",\"lang\":\"" + escapeJson(runtimeStations[i].language) + "\"}";
+            cIdx++;
+        }
+    }
+    json += "]";
+    httpd_resp_set_type(req, "application/json");
+    httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
+    return httpd_resp_send(req, json.c_str(), json.length());
+}
+
+static esp_err_t http_del_station_handler(httpd_req_t *req) {
+    char query[64] = {0};
+    if (httpd_req_get_url_query_str(req, query, sizeof(query)) == ESP_OK) {
+        char idx_str[16] = {0};
+        if (httpd_query_key_value(query, "idx", idx_str, sizeof(idx_str)) == ESP_OK) {
+            int idx = atoi(idx_str);
+            Serial.printf("[HTTPD] Queued delete custom station index: %d\n", idx);
+            pendingDeleteStationIdx = idx;
+        }
+    }
+    httpd_resp_set_type(req, "application/json");
+    httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
+    return httpd_resp_send(req, "{\"status\":\"ok\"}", HTTPD_RESP_USE_STRLEN);
+}
+
 static esp_err_t http_add_station_handler(httpd_req_t *req) {
     char post_buf[512] = {0};
     int remaining = req->content_len;
@@ -2435,10 +3171,13 @@ static esp_err_t http_add_station_handler(httpd_req_t *req) {
     post_buf[received] = '\0';
 
     char raw_name[96] = {0}, raw_url[256] = {0}, raw_state[64] = {0}, raw_lang[64] = {0};
+    char raw_idx[16] = {0}, raw_play[16] = {0};
     httpd_query_key_value(post_buf, "name", raw_name, sizeof(raw_name));
     httpd_query_key_value(post_buf, "url", raw_url, sizeof(raw_url));
     httpd_query_key_value(post_buf, "state", raw_state, sizeof(raw_state));
     httpd_query_key_value(post_buf, "lang", raw_lang, sizeof(raw_lang));
+    httpd_query_key_value(post_buf, "idx", raw_idx, sizeof(raw_idx));
+    httpd_query_key_value(post_buf, "play", raw_play, sizeof(raw_play));
 
     char dec_name[96] = {0}, dec_url[256] = {0}, dec_state[64] = {0}, dec_lang[64] = {0};
     url_decode_str(dec_name, raw_name);
@@ -2446,48 +3185,29 @@ static esp_err_t http_add_station_handler(httpd_req_t *req) {
     url_decode_str(dec_state, raw_state);
     url_decode_str(dec_lang, raw_lang);
 
+    int editIdx = strlen(raw_idx) > 0 ? atoi(raw_idx) : -1;
+    bool playNow = (strlen(raw_play) > 0 && atoi(raw_play) == 1);
+
     if (strlen(dec_name) > 0 && strlen(dec_url) > 0) {
-        saveCustomStation(String(dec_name), String(dec_url), String(dec_state), String(dec_lang));
-        httpd_resp_set_status(req, "303 See Other");
-        httpd_resp_set_hdr(req, "Location", "/");
-        return httpd_resp_send(req, NULL, 0);
+        strncpy(pendingAddStation.name, dec_name, sizeof(pendingAddStation.name) - 1);
+        pendingAddStation.name[sizeof(pendingAddStation.name) - 1] = '\0';
+        strncpy(pendingAddStation.url, dec_url, sizeof(pendingAddStation.url) - 1);
+        pendingAddStation.url[sizeof(pendingAddStation.url) - 1] = '\0';
+        strncpy(pendingAddStation.state, dec_state, sizeof(pendingAddStation.state) - 1);
+        pendingAddStation.state[sizeof(pendingAddStation.state) - 1] = '\0';
+        strncpy(pendingAddStation.lang, dec_lang, sizeof(pendingAddStation.lang) - 1);
+        pendingAddStation.lang[sizeof(pendingAddStation.lang) - 1] = '\0';
+        pendingAddStation.editIdx = editIdx;
+        pendingAddStation.playNow = playNow;
+        pendingAddStation.pending = true;
+
+        Serial.printf("[HTTPD] Queued Add/Update Station: '%s' -> '%s'\n", dec_name, dec_url);
+        httpd_resp_set_type(req, "application/json");
+        httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
+        return httpd_resp_send(req, "{\"status\":\"ok\"}", HTTPD_RESP_USE_STRLEN);
     }
     httpd_resp_set_status(req, "400 Bad Request");
-    return httpd_resp_send(req, "Missing name or url", HTTPD_RESP_USE_STRLEN);
-}
-
-static esp_err_t http_save_wifi_handler(httpd_req_t *req) {
-    char post_buf[256] = {0};
-    int remaining = req->content_len;
-    int received = 0;
-    while (remaining > 0 && received < (int)sizeof(post_buf) - 1) {
-        int ret = httpd_req_recv(req, post_buf + received, min(remaining, (int)sizeof(post_buf) - 1 - received));
-        if (ret <= 0) break;
-        received += ret;
-        remaining -= ret;
-    }
-    post_buf[received] = '\0';
-
-    char raw_ssid[64] = {0}, raw_pass[64] = {0};
-    httpd_query_key_value(post_buf, "ssid", raw_ssid, sizeof(raw_ssid));
-    httpd_query_key_value(post_buf, "pass", raw_pass, sizeof(raw_pass));
-
-    char dec_ssid[64] = {0}, dec_pass[64] = {0};
-    url_decode_str(dec_ssid, raw_ssid);
-    url_decode_str(dec_pass, raw_pass);
-
-    if (strlen(dec_ssid) > 0) {
-        prefs.begin("air_radio", false);
-        prefs.putString("wifi_ssid", dec_ssid);
-        if (strlen(dec_pass) > 0) prefs.putString("wifi_pass", dec_pass);
-        prefs.end();
-        httpd_resp_send(req, "<h3>Wi-Fi Saved! Restarting...</h3>", HTTPD_RESP_USE_STRLEN);
-        delay(1000);
-        esp_restart();
-        return ESP_OK;
-    }
-    httpd_resp_set_status(req, "400 Bad Request");
-    return httpd_resp_send(req, "Missing SSID", HTTPD_RESP_USE_STRLEN);
+    return httpd_resp_send(req, "{\"status\":\"error\",\"msg\":\"Missing name or url\"}", HTTPD_RESP_USE_STRLEN);
 }
 
 static esp_err_t http_favicon_handler(httpd_req_t *req) {
@@ -2528,6 +3248,27 @@ static const httpd_uri_t uri_cmd = {
     .user_ctx  = NULL
 };
 
+static const httpd_uri_t uri_timer = {
+    .uri       = "/api/timer",
+    .method    = HTTP_GET,
+    .handler   = http_timer_handler,
+    .user_ctx  = NULL
+};
+
+static const httpd_uri_t uri_custom_st = {
+    .uri       = "/api/custom_stations",
+    .method    = HTTP_GET,
+    .handler   = http_custom_stations_handler,
+    .user_ctx  = NULL
+};
+
+static const httpd_uri_t uri_del_st = {
+    .uri       = "/api/del_station",
+    .method    = HTTP_GET,
+    .handler   = http_del_station_handler,
+    .user_ctx  = NULL
+};
+
 static const httpd_uri_t uri_add_st = {
     .uri       = "/add_station",
     .method    = HTTP_POST,
@@ -2535,45 +3276,10 @@ static const httpd_uri_t uri_add_st = {
     .user_ctx  = NULL
 };
 
-static const httpd_uri_t uri_wifi = {
-    .uri       = "/save_wifi",
-    .method    = HTTP_POST,
-    .handler   = http_save_wifi_handler,
-    .user_ctx  = NULL
-};
-
 static const httpd_uri_t uri_fav = {
     .uri       = "/favicon.ico",
     .method    = HTTP_GET,
     .handler   = http_favicon_handler,
-    .user_ctx  = NULL
-};
-
-static esp_err_t http_scan_wifi_handler(httpd_req_t *req) {
-    Serial.println("[HTTPD] Scan WiFi requested");
-    WiFi.disconnect();
-    delay(100);
-    WiFi.mode(WIFI_STA);
-    delay(100);
-    int n = WiFi.scanNetworks();
-    String json = "[";
-    if (n > 0) {
-        for (int i = 0; i < n; ++i) {
-            if (i > 0) json += ",";
-            json += "\"" + WiFi.SSID(i) + "\"";
-        }
-    }
-    json += "]";
-    WiFi.scanDelete();
-    httpd_resp_set_type(req, "application/json");
-    httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
-    return httpd_resp_send(req, json.c_str(), json.length());
-}
-
-static const httpd_uri_t uri_scan_wifi = {
-    .uri       = "/api/scan_wifi",
-    .method    = HTTP_GET,
-    .handler   = http_scan_wifi_handler,
     .user_ctx  = NULL
 };
 
@@ -2587,7 +3293,7 @@ void setupWebServer() {
     config.max_uri_handlers = 12;
     config.stack_size = 10240;
     config.task_caps = (MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
-    config.task_priority = 3;
+    config.task_priority = 2;
     config.core_id = 1;
     config.lru_purge_enable = true;
     config.recv_wait_timeout = 5;
@@ -2598,9 +3304,10 @@ void setupWebServer() {
         httpd_register_uri_handler(webHttpdServer, &uri_root);
         httpd_register_uri_handler(webHttpdServer, &uri_status);
         httpd_register_uri_handler(webHttpdServer, &uri_cmd);
+        httpd_register_uri_handler(webHttpdServer, &uri_timer);
+        httpd_register_uri_handler(webHttpdServer, &uri_custom_st);
+        httpd_register_uri_handler(webHttpdServer, &uri_del_st);
         httpd_register_uri_handler(webHttpdServer, &uri_add_st);
-        httpd_register_uri_handler(webHttpdServer, &uri_wifi);
-        httpd_register_uri_handler(webHttpdServer, &uri_scan_wifi);
         httpd_register_uri_handler(webHttpdServer, &uri_fav);
         httpd_register_err_handler(webHttpdServer, HTTPD_404_NOT_FOUND, http_404_handler);
 
@@ -2812,10 +3519,75 @@ void loop() {
         updatePlayerUI();
     }
 
+    // 4. Thread-Safe Pending Timer Save on Core 1
+    if (pendingTimerSave.pending) {
+        saveTimerSettings(pendingTimerSave.en, pendingTimerSave.h, pendingTimerSave.m, pendingTimerSave.dur);
+        bsp_display_lock(0);
+        updateClockAndBatteryUI();
+        bsp_display_unlock();
+        pendingTimerSave.pending = false;
+    }
+
+    // 5. Thread-Safe Pending Add / Update Custom Station on Core 1
+    if (pendingAddStation.pending) {
+        saveCustomStation(String(pendingAddStation.name), String(pendingAddStation.url), 
+                          String(pendingAddStation.state), String(pendingAddStation.lang), 
+                          pendingAddStation.editIdx);
+        if (pendingAddStation.playNow) {
+            for (int i = (int)runtimeStations.size() - 1; i >= 0; i--) {
+                if (runtimeStations[i].isCustom && runtimeStations[i].url == String(pendingAddStation.url)) {
+                    for (size_t f = 0; f < filteredIndices.size(); f++) {
+                        if (filteredIndices[f] == i) { currentFilterPosition = f; break; }
+                    }
+                    bsp_display_lock(0);
+                    lv_tabview_set_act(tabview, 0, LV_ANIM_OFF);
+                    bsp_display_unlock();
+                    playCurrentStation();
+                    break;
+                }
+            }
+        }
+        pendingAddStation.pending = false;
+    }
+
+    // 6. Thread-Safe Pending Delete Custom Station on Core 1
+    if (pendingDeleteStationIdx >= 0) {
+        deleteCustomStation(pendingDeleteStationIdx);
+        pendingDeleteStationIdx = -1;
+    }
+
+    // 7. Thread-Safe Custom Station List Refresh on Core 1
+    if (pendingStationListRefresh) {
+        pendingStationListRefresh = false;
+        applyCategoryFilter(activeCatType, activeFilterVal.c_str());
+        if (list_categories) populateCategoryList();
+        if (list_stations) populateStationList();
+    }
+
+    // 8. 1-Second Interval Check for Persistent Auto-On Alarm Timer
+    static unsigned long lastTimerCheckMs = 0;
+    if (millis() - lastTimerCheckMs >= 1000) {
+        lastTimerCheckMs = millis();
+        checkAutoOnTimer();
+    }
+
+    // 9. 10-Attempt Stream Connection Retry Engine (2.5s spacing)
+    if (isRetryingStream && (currentSource == SRC_RADIO)) {
+        if (millis() >= nextStreamRetryMs) {
+            isRetryingStream = false;
+            pendingStreamUrl = activeTargetUrl;
+            newStreamRequested = true;
+            Serial.printf("[RETRY ENGINE] Retrying stream (%d/%d): %s\n", 
+                          streamRetryCount + 1, MAX_STREAM_RETRIES, activeTargetUrl.c_str());
+        }
+    }
+
     if (newStreamRequested) {
         newStreamRequested = false;
         audio.stopSong();
         if (pendingIsSdFile) {
+            isRetryingStream = false;
+            streamRetryCount = 0;
             if (pendingStreamUrl.length() > 0 && sdCardMounted) {
                 Serial.printf("[LOOP] Playing SD File: %s\n", pendingStreamUrl.c_str());
                 audio.connecttoFS(SD_MMC, pendingStreamUrl.c_str());
@@ -2826,21 +3598,43 @@ void loop() {
             }
         } else {
             if (pendingStreamUrl.length() > 0 && WiFi.status() == WL_CONNECTED) {
-                Serial.printf("[LOOP] Connecting to: %s\n", pendingStreamUrl.c_str());
+                Serial.printf("[LOOP] Connecting to (%d/%d): %s\n", 
+                              streamRetryCount + 1, MAX_STREAM_RETRIES, pendingStreamUrl.c_str());
                 bool ok = audio.connecttohost(pendingStreamUrl.c_str());
                 if (!ok) {
-                    Serial.println("[LOOP] connecttohost returned false!");
-                    audio.stopSong();
-                    isBuffering = false;
-                    isPlaying = false;
-                    currentError = ERR_OFFLINE;
-                    alertMessage = "Station offline. Tap NEXT to switch.";
-                    uiNeedsUpdate = true;
+                    Serial.printf("[LOOP] connecttohost returned false on attempt %d/%d\n", 
+                                  streamRetryCount + 1, MAX_STREAM_RETRIES);
+                    streamRetryCount++;
+                    if (streamRetryCount < MAX_STREAM_RETRIES) {
+                        isRetryingStream = true;
+                        nextStreamRetryMs = millis() + 2500;
+                        alertMessage = "Retrying stream (" + String(streamRetryCount + 1) + "/10)...";
+                        isBuffering = true;
+                        isPlaying = true;
+                        uiNeedsUpdate = true;
+                    } else {
+                        isRetryingStream = false;
+                        audio.stopSong();
+                        isBuffering = false;
+                        isPlaying = false;
+                        currentError = ERR_OFFLINE;
+                        alertMessage = "Station offline after 10 attempts.";
+                        uiNeedsUpdate = true;
+                    }
                 } else {
                     isPlaying = true;
+                    isBuffering = true;
+                    streamStartTime = millis();
+                    streamEstablished = false;
+                    if (streamRetryCount > 0) {
+                        alertMessage = "Connecting... (Attempt " + String(streamRetryCount + 1) + "/10)";
+                        uiNeedsUpdate = true;
+                    }
                 }
             } else {
                 isPlaying = false;
+                isRetryingStream = false;
+                streamRetryCount = 0;
                 if (WiFi.status() != WL_CONNECTED) {
                     currentError = ERR_NONE;
                     alertMessage = "Wi-Fi disconnected. Open Wi-Fi tab.";
@@ -2848,6 +3642,29 @@ void loop() {
                     currentError = ERR_OFFLINE;
                     alertMessage = "Invalid station URL.";
                 }
+                uiNeedsUpdate = true;
+            }
+        }
+    }
+
+    // 10. Connection Stalling Surveillance (Retries up to 10 times if connection hangs while buffering)
+    if (isBuffering && isPlaying && (currentSource == SRC_RADIO) && !isRetryingStream) {
+        if (millis() - streamStartTime > 12000) {
+            Serial.printf("[LOOP] Stream connection stalled on attempt %d/%d\n", 
+                          streamRetryCount + 1, MAX_STREAM_RETRIES);
+            streamRetryCount++;
+            if (streamRetryCount < MAX_STREAM_RETRIES) {
+                isRetryingStream = true;
+                nextStreamRetryMs = millis() + 2500;
+                alertMessage = "Retrying stream (" + String(streamRetryCount + 1) + "/10)...";
+                uiNeedsUpdate = true;
+            } else {
+                isRetryingStream = false;
+                audio.stopSong();
+                isBuffering = false;
+                isPlaying = false;
+                currentError = ERR_TIMEOUT;
+                alertMessage = "Station offline after 10 attempts.";
                 uiNeedsUpdate = true;
             }
         }
