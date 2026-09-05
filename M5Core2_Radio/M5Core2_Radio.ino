@@ -13,6 +13,8 @@
 #include <time.h>
 #include <esp_http_server.h>
 #include <esp_wifi.h>
+#include <SD.h>
+#include <SPI.h>
 #include "Audio.h"
 #include "stations_db.h"
 
@@ -85,8 +87,22 @@ int lastTimerTriggerDay = -1;
 bool alarmActivePlaying = false;
 uint32_t alarmAutoOffExpiryMs = 0;
 
-// Active UI Screen Tab (0: Now Playing, 1: Stations, 2: Wi-Fi Setup)
+// Active UI Screen Tab (0: Now Playing, 1: Stations, 2: SD Music, 3: Wi-Fi Setup)
 int activeTab = 0;
+
+// MicroSD Music Player State
+struct SDSong {
+    String path;
+    String name;
+    uint32_t size;
+};
+std::vector<SDSong> sdSongs;
+bool sdMounted = false;
+bool isSDMode = false;
+bool isShuffle = false;
+int currentSDIndex = 0;
+int sdCurrentPage = 0;
+#define SD_SONGS_PER_PAGE 4
 
 enum StationViewMode {
     STATION_VIEW_LIST = 0,
@@ -122,6 +138,12 @@ String wifiStatusMsg = "";
 
 // Forward Declarations
 void loadSavedSettings();
+bool checkAndMountSD();
+void scanSDFiles(const char* dirName);
+void playSDSong(int idx);
+void playNextSDSong();
+void playPrevSDSong();
+void drawSDTab();
 void loadTimerSettings();
 void saveTimerSettings(bool en, int h, int m, int dur);
 void checkAutoOnTimer();
@@ -145,6 +167,11 @@ void audio_msg_handler(Audio::msg_t m) {
         currentStreamTitle = String(m.msg);
         currentStreamTitle.trim();
         uiNeedsUpdate = true;
+    } else if (m.e == Audio::evt_eof) {
+        Serial.println("[AUDIO] End of stream/file reached.");
+        if (isSDMode && isPlaying && !sdSongs.empty()) {
+            playNextSDSong();
+        }
     }
 }
 
@@ -209,6 +236,7 @@ void saveCustomStation(const String& name, const String& url, const String& stat
         prefs.putInt("count", count + 1);
     }
     prefs.end();
+    checkAndMountSD();
     initStationDatabase();
     applyCategoryFilter(activeCatType, activeFilterVal.c_str());
 }
@@ -243,6 +271,7 @@ void deleteCustomStation(int customIdx) {
     prefs.putInt("count", tempCustoms.size());
     prefs.end();
 
+    checkAndMountSD();
     initStationDatabase();
     applyCategoryFilter(activeCatType, activeFilterVal.c_str());
 }
@@ -301,6 +330,7 @@ void playCurrentStation() {
     isRetryingStream = false;
     streamEstablished = false;
 
+    isSDMode = false;
     isPlaying = true;
     isBuffering = true;
     currentStreamTitle = "Connecting...";
@@ -308,6 +338,105 @@ void playCurrentStation() {
 
     audio.stopSong();
     audio.connecttohost(st.url.c_str());
+}
+
+// -----------------------------------------------------------------------------
+// MicroSD Card Engine (Detection, File Scanner & Playback)
+// -----------------------------------------------------------------------------
+bool checkAndMountSD() {
+    if (sdMounted) {
+        if (SD.cardType() == CARD_NONE) {
+            sdMounted = false;
+            sdSongs.clear();
+            Serial.println("[SD] Card removed.");
+            return false;
+        }
+        return true;
+    }
+    // Attempt mount on standard M5Core2 SD pins (CS=GPIO 4)
+    if (SD.begin(GPIO_NUM_4, SPI, 25000000)) {
+        if (SD.cardType() != CARD_NONE) {
+            sdMounted = true;
+            sdSongs.clear();
+            Serial.printf("[SD] Card Mounted! Size: %llu MB\n", SD.cardSize() / (1024 * 1024));
+            scanSDFiles("/");
+            return true;
+        }
+    }
+    return false;
+}
+
+void scanSDFiles(const char* dirName) {
+    File root = SD.open(dirName);
+    if (!root || !root.isDirectory()) return;
+
+    File file = root.openNextFile();
+    while (file) {
+        if (file.isDirectory()) {
+            String subPath = String(dirName);
+            if (!subPath.endsWith("/")) subPath += "/";
+            subPath += file.name();
+            if (file.name() && file.name()[0] != '.' && subPath.indexOf("System") < 0) {
+                scanSDFiles(subPath.c_str());
+            }
+        } else {
+            String fname = String(file.name());
+            String lower = fname;
+            lower.toLowerCase();
+            if (lower.endsWith(".mp3") || lower.endsWith(".aac") || lower.endsWith(".m4a") || lower.endsWith(".wav")) {
+                SDSong s;
+                s.path = String(file.path());
+                int lastSlash = s.path.lastIndexOf('/');
+                String baseName = (lastSlash >= 0) ? s.path.substring(lastSlash + 1) : s.path;
+                int dot = baseName.lastIndexOf('.');
+                s.name = (dot > 0) ? baseName.substring(0, dot) : baseName;
+                s.size = file.size();
+                sdSongs.push_back(s);
+            }
+        }
+        file = root.openNextFile();
+    }
+    Serial.printf("[SD] Scan complete: %d songs found.\n", (int)sdSongs.size());
+}
+
+void playSDSong(int idx) {
+    if (sdSongs.empty()) return;
+    if (idx < 0) idx = sdSongs.size() - 1;
+    if (idx >= (int)sdSongs.size()) idx = 0;
+
+    currentSDIndex = idx;
+    isSDMode = true;
+    const SDSong& song = sdSongs[currentSDIndex];
+
+    Serial.printf("[SD-PLAY] #%d: %s -> %s\n", currentSDIndex + 1, song.name.c_str(), song.path.c_str());
+
+    audio.stopSong();
+    delay(50);
+    isPlaying = audio.connecttoFS(SD, song.path.c_str());
+    isBuffering = false;
+    currentStreamTitle = "SD: " + song.name;
+    uiNeedsUpdate = true;
+}
+
+void playNextSDSong() {
+    if (sdSongs.empty()) return;
+    if (isShuffle && sdSongs.size() > 1) {
+        int nextIdx = random(sdSongs.size());
+        if (nextIdx == currentSDIndex) nextIdx = (nextIdx + 1) % sdSongs.size();
+        playSDSong(nextIdx);
+    } else {
+        playSDSong(currentSDIndex + 1);
+    }
+}
+
+void playPrevSDSong() {
+    if (sdSongs.empty()) return;
+    if (isShuffle && sdSongs.size() > 1) {
+        int nextIdx = random(sdSongs.size());
+        playSDSong(nextIdx);
+    } else {
+        playSDSong(currentSDIndex - 1);
+    }
 }
 
 void setSystemVolume(int vol) {
@@ -675,12 +804,11 @@ void drawHeader() {
 void drawBottomBar() {
     M5.Display.fillRect(0, 196, 320, 44, 0x10A2);
 
-    // 3 Tabs: [ Radio ] [ Stations ] [ Wi-Fi ]
-    int tabW = 98;
-    const char* tabs[3] = {"Radio", "Stations", "Wi-Fi"};
-    int tabX[3] = {6, 111, 216};
-    for (int i = 0; i < 3; i++) {
-        int x = tabX[i];
+    // 4 Tabs: [ Radio ] [ Stations ] [ SD Card ] [ Wi-Fi ]
+    int tabW = 74;
+    const char* tabs[4] = {"Radio", "Stations", "SD Card", "Wi-Fi"};
+    for (int i = 0; i < 4; i++) {
+        int x = 4 + (i * 79);
         bool isAct = (activeTab == i);
         M5.Display.fillRoundRect(x, 202, tabW, 32, 6, isAct ? 0x07FF : 0x2124);
         M5.Display.setTextColor(isAct ? 0x0000 : 0xFFFF);
@@ -724,20 +852,32 @@ void drawNowPlayingTab() {
     int realIdx = filteredIndices[currentFilterPosition];
     const LiveStation& st = runtimeStations[realIdx];
 
-    // 1. Station Name Box
+    // 1. Title Box & Badges (Internet Radio vs SD Card)
     M5.Display.fillRoundRect(8, 32, 304, 60, 8, 0x18E3);
     M5.Display.setTextColor(0xFFE0);
     M5.Display.setTextDatum(middle_center);
     M5.Display.setFont(&fonts::Font2);
     M5.Display.setTextSize(1);
-    M5.Display.drawString(st.name, 160, 50);
 
-    // Badges: Language & State
-    M5.Display.setFont(&fonts::Font0);
-    char badgeBuf[64];
-    snprintf(badgeBuf, sizeof(badgeBuf), "[ %s ]  [ %s ]", st.language.c_str(), st.state.c_str());
-    M5.Display.setTextColor(0x07FF);
-    M5.Display.drawString(badgeBuf, 160, 74);
+    if (isSDMode) {
+        String sTitle = (!sdSongs.empty() && currentSDIndex < (int)sdSongs.size()) ? sdSongs[currentSDIndex].name : "SD Music";
+        if (sTitle.length() > 24) sTitle = sTitle.substring(0, 22) + "..";
+        M5.Display.drawString(sTitle, 160, 50);
+
+        M5.Display.setFont(&fonts::Font0);
+        char badgeBuf[64];
+        snprintf(badgeBuf, sizeof(badgeBuf), "[ SD CARD MP3 ]  [ SHUFFLE: %s ]", isShuffle ? "ON" : "OFF");
+        M5.Display.setTextColor(isShuffle ? 0x07E0 : 0x07FF);
+        M5.Display.drawString(badgeBuf, 160, 74);
+    } else {
+        M5.Display.drawString(st.name, 160, 50);
+
+        M5.Display.setFont(&fonts::Font0);
+        char badgeBuf[64];
+        snprintf(badgeBuf, sizeof(badgeBuf), "[ %s ]  [ %s ]", st.language.c_str(), st.state.c_str());
+        M5.Display.setTextColor(0x07FF);
+        M5.Display.drawString(badgeBuf, 160, 74);
+    }
 
     // 2. Clock & Date Display
     time_t now;
@@ -988,6 +1128,87 @@ void drawStationsTab() {
 }
 
 // -----------------------------------------------------------------------------
+// SD Card Music Player Tab
+// -----------------------------------------------------------------------------
+void drawSDTab() {
+    M5.Display.fillRect(0, 26, 320, 170, 0x0841);
+
+    // Top Header: Status / Shuffle Toggle / Rescan
+    M5.Display.setTextDatum(middle_left);
+    M5.Display.setFont(&fonts::Font0);
+    if (!sdMounted) {
+        M5.Display.setTextColor(0xF800);
+        M5.Display.drawString("NO SD CARD", 10, 40);
+    } else {
+        M5.Display.setTextColor(0x07E0);
+        char sBuf[32];
+        snprintf(sBuf, sizeof(sBuf), "SD: %d Songs", (int)sdSongs.size());
+        M5.Display.drawString(sBuf, 10, 40);
+    }
+
+    // Shuffle Button: [ Shuffle: ON / OFF ]
+    M5.Display.fillRoundRect(160, 29, 90, 22, 4, isShuffle ? 0x07E0 : 0x2124);
+    M5.Display.setTextColor(isShuffle ? 0x0000 : 0xFFFF);
+    M5.Display.setTextDatum(middle_center);
+    M5.Display.drawString(isShuffle ? "SHUFFLE: ON" : "SHUFFLE: OFF", 205, 40);
+
+    // Rescan Button: [ Scan ]
+    M5.Display.fillRoundRect(256, 29, 56, 22, 4, 0x7BEF);
+    M5.Display.setTextColor(0x0000);
+    M5.Display.drawString("Scan", 284, 40);
+
+    if (!sdMounted || sdSongs.empty()) {
+        M5.Display.setTextColor(0xFFE0);
+        M5.Display.setTextDatum(middle_center);
+        M5.Display.setFont(&fonts::Font2);
+        M5.Display.drawString("No Songs on SD Card", 160, 90);
+        M5.Display.setFont(&fonts::Font0);
+        M5.Display.setTextColor(0x9CD3);
+        M5.Display.drawString("Insert MicroSD with MP3 files", 160, 116);
+        M5.Display.drawString("and tap 'Scan' above", 160, 134);
+    } else {
+        // Song List (4 per page)
+        int totalSongs = sdSongs.size();
+        int totalPages = (totalSongs + SD_SONGS_PER_PAGE - 1) / SD_SONGS_PER_PAGE;
+        if (totalPages == 0) totalPages = 1;
+
+        int startIdx = sdCurrentPage * SD_SONGS_PER_PAGE;
+        for (int i = 0; i < SD_SONGS_PER_PAGE; i++) {
+            int idx = startIdx + i;
+            int y = 56 + (i * 27);
+            if (idx < totalSongs) {
+                bool isCur = (isSDMode && idx == currentSDIndex);
+                M5.Display.fillRoundRect(8, y, 304, 24, 4, isCur ? 0x07FF : 0x18E3);
+                M5.Display.setTextColor(isCur ? 0x0000 : 0xFFFF);
+                M5.Display.setTextDatum(middle_left);
+                String sText = String(idx + 1) + ". " + sdSongs[idx].name;
+                if (sText.length() > 26) sText = sText.substring(0, 24) + "..";
+                M5.Display.drawString(sText, 16, y + 12);
+
+                // Play icon
+                M5.Display.setTextDatum(middle_right);
+                M5.Display.drawString(isCur && isPlaying ? "PLAYING" : ">", 304, y + 12);
+            }
+        }
+
+        // Bottom Page Controls: [ < Prev ]   Page X / Y   [ Next > ]
+        M5.Display.fillRoundRect(8, 168, 96, 24, 4, 0x2124);
+        M5.Display.setTextColor(0xFFFF);
+        M5.Display.setTextDatum(middle_center);
+        M5.Display.drawString("< Prev", 56, 180);
+
+        char pBuf[32];
+        snprintf(pBuf, sizeof(pBuf), "%d / %d", sdCurrentPage + 1, totalPages);
+        M5.Display.setTextColor(0xFFE0);
+        M5.Display.drawString(pBuf, 160, 180);
+
+        M5.Display.fillRoundRect(216, 168, 96, 24, 4, 0x2124);
+        M5.Display.setTextColor(0xFFFF);
+        M5.Display.drawString("Next >", 264, 180);
+    }
+}
+
+// -----------------------------------------------------------------------------
 // Wi-Fi Tab (Network List & Touch Keyboard)
 // -----------------------------------------------------------------------------
 void drawWiFiTab() {
@@ -1187,7 +1408,8 @@ void drawFullUI() {
     drawHeader();
     if (activeTab == 0) drawNowPlayingTab();
     else if (activeTab == 1) drawStationsTab();
-    else if (activeTab == 2) drawWiFiTab();
+    else if (activeTab == 2) drawSDTab();
+    else if (activeTab == 3) drawWiFiTab();
     drawBottomBar();
 }
 
@@ -1216,13 +1438,16 @@ void handleTouchAndButtons() {
     int x = t.x;
     int y = t.y;
 
-    // Bottom Navigation Bar (3 tabs: [Radio] [Stations] [Wi-Fi])
+    // Bottom Navigation Bar (4 tabs: [Radio: 0] [Stations: 1] [SD Card: 2] [Wi-Fi: 3])
     if (y >= 196) {
-        int clickedTab = (x < 107) ? 0 : ((x < 213) ? 1 : 2);
+        int clickedTab = (x - 4) / 79;
+        if (clickedTab < 0) clickedTab = 0;
+        if (clickedTab > 3) clickedTab = 3;
         if (activeTab != clickedTab || isEnteringWiFiPass || stationViewMode != STATION_VIEW_LIST) {
             activeTab = clickedTab;
             isEnteringWiFiPass = false;
             stationViewMode = STATION_VIEW_LIST;
+            if (activeTab == 2) checkAndMountSD();
             uiNeedsUpdate = true;
         }
         return;
@@ -1230,23 +1455,35 @@ void handleTouchAndButtons() {
 
     // Tab 0: Now Playing Touch Actions
     if (activeTab == 0) {
-        // Tapping the badges: [ Language ] [ State ] at y: 64..84
-        if (y >= 64 && y <= 86 && !filteredIndices.empty()) {
-            int realIdx = filteredIndices[currentFilterPosition];
-            if (x < 160) {
-                applyCategoryFilter(CAT_LANG, runtimeStations[realIdx].language.c_str());
-            } else {
-                applyCategoryFilter(CAT_STATE, runtimeStations[realIdx].state.c_str());
+        // Tapping badges at y: 64..86
+        if (y >= 64 && y <= 86) {
+            if (isSDMode) {
+                isShuffle = !isShuffle;
+                uiNeedsUpdate = true;
+                return;
+            } else if (!filteredIndices.empty()) {
+                int realIdx = filteredIndices[currentFilterPosition];
+                if (x < 160) {
+                    applyCategoryFilter(CAT_LANG, runtimeStations[realIdx].language.c_str());
+                } else {
+                    applyCategoryFilter(CAT_STATE, runtimeStations[realIdx].state.c_str());
+                }
+                activeTab = 1;
+                stationViewMode = STATION_VIEW_LIST;
+                uiNeedsUpdate = true;
+                return;
             }
-            activeTab = 1;
-            stationViewMode = STATION_VIEW_LIST;
-            uiNeedsUpdate = true;
-            return;
         }
         if (y >= 145 && y <= 185) {
-            if (x >= 6 && x <= 52) playStationByFilterIndex(currentFilterPosition - 1);
+            if (x >= 6 && x <= 52) {
+                if (isSDMode) playPrevSDSong();
+                else playStationByFilterIndex(currentFilterPosition - 1);
+            }
             else if (x >= 56 && x <= 128) togglePlayPause();
-            else if (x >= 132 && x <= 178) playStationByFilterIndex(currentFilterPosition + 1);
+            else if (x >= 132 && x <= 178) {
+                if (isSDMode) playNextSDSong();
+                else playStationByFilterIndex(currentFilterPosition + 1);
+            }
             else if (x >= 184 && x <= 222) setSystemVolume(currentVolume - 1);
             else if (x >= 226 && x <= 274) {
                 // Tap volume number to mute / unmute
@@ -1395,8 +1632,50 @@ void handleTouchAndButtons() {
             }
         }
     }
-    // Tab 2: Wi-Fi Setup Touch Actions
+    // Tab 2: SD Music Player Touch Actions
     else if (activeTab == 2) {
+        // Shuffle Toggle (y: 28..52, x: 160..250)
+        if (y >= 28 && y <= 52 && x >= 160 && x <= 250) {
+            isShuffle = !isShuffle;
+            uiNeedsUpdate = true;
+            return;
+        }
+        // Rescan Button (y: 28..52, x: 254..314)
+        if (y >= 28 && y <= 52 && x >= 254 && x <= 314) {
+            sdMounted = false;
+            checkAndMountSD();
+            uiNeedsUpdate = true;
+            return;
+        }
+        // Select Song from List (y: 56..164)
+        for (int i = 0; i < SD_SONGS_PER_PAGE; i++) {
+            int rowY = 56 + (i * 27);
+            if (y >= rowY && y <= rowY + 24) {
+                int clickedIdx = (sdCurrentPage * SD_SONGS_PER_PAGE) + i;
+                if (clickedIdx < (int)sdSongs.size()) {
+                    playSDSong(clickedIdx);
+                    activeTab = 0; // jump to Now Playing
+                    return;
+                }
+            }
+        }
+        // Pagination Controls (y: 168..194)
+        if (y >= 168 && y <= 194 && !sdSongs.empty()) {
+            int totalPages = (sdSongs.size() + SD_SONGS_PER_PAGE - 1) / SD_SONGS_PER_PAGE;
+            if (totalPages == 0) totalPages = 1;
+            if (x < 156) {
+                if (sdCurrentPage > 0) sdCurrentPage--;
+                else sdCurrentPage = totalPages - 1;
+                uiNeedsUpdate = true;
+            } else {
+                if (sdCurrentPage < totalPages - 1) sdCurrentPage++;
+                else sdCurrentPage = 0;
+                uiNeedsUpdate = true;
+            }
+        }
+    }
+    // Tab 3: Wi-Fi Setup Touch Actions
+    else if (activeTab == 3) {
         if (isEnteringWiFiPass) {
             // Cancel button
             if (y >= 30 && y <= 56 && x >= 200 && x <= 252) {
@@ -1511,6 +1790,7 @@ void setup() {
     M5.Display.setBrightness(128);
     M5.Display.fillScreen(0x0000);
 
+    checkAndMountSD();
     initStationDatabase();
     loadSavedSettings();
 
