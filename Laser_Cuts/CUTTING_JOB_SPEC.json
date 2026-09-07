@@ -1,0 +1,134 @@
+{
+  "project_name": "ESP32-S3 JC3248W535 Speaker Back Door Display Cutout",
+  "created_at": "2026-09-06T22:12:00+05:30",
+  "machine": {
+    "model": "Creality Falcon 5W Laser Engraver Machine",
+    "machine_power_w": 72,
+    "optical_laser_power_w": 5,
+    "wavelength_nm": 450,
+    "spot_size_mm": [0.06, 0.06],
+    "working_area_mm": [400.0, 415.0],
+    "max_speed_mm_per_min": 10000,
+    "firmware": "GRBL 1.1f",
+    "offline_usage": "TF / MicroSD card, single physical multi-function top button"
+  },
+  "workpiece": {
+    "description": "Small commercial desktop speaker back door plate",
+    "material": "Gold/bronze injection-molded ABS/plastic",
+    "thickness_est_mm": 2.0,
+    "outer_dimensions_mm": {
+      "width": 153.0,
+      "height": 90.0,
+      "corner_radius": 8.0
+    },
+    "safe_zones_and_keepouts": {
+      "top_controls_zone_y": [0.0, 11.5],
+      "top_printed_labels_zone_y": [11.5, 16.0],
+      "bottom_screw_bosses": [
+        { "name": "Left Boss", "x": 53.7, "y": 81.3, "boss_radius": 4.0, "boss_top_y": 77.3, "hole_diameter": 3.0 },
+        { "name": "Middle Boss", "x": 98.6, "y": 82.5, "boss_radius": 4.0, "boss_top_y": 78.5, "hole_diameter": 3.0 },
+        { "name": "Right Corner Boss", "x": 144.7, "y": 84.4, "boss_radius": 4.0, "boss_top_y": 80.4, "hole_diameter": 3.0 },
+        { "name": "Left Corner Boss", "x": 5.4, "y": 79.8, "boss_radius": 4.0, "boss_top_y": 75.8, "hole_diameter": 3.0 }
+      ],
+      "original_air_vent_louvers": {
+        "x_range": [69.3, 125.4],
+        "width": 56.1,
+        "center_x": 97.35,
+        "y_range": [46.2, 65.5],
+        "height": 19.3,
+        "center_y": 55.85
+      }
+    }
+  },
+  "display_module": {
+    "model": "ESP32-S3 JC3248W535 (3.5 inch IPS Capacitive Touch)",
+    "front_glass_mm": { "width": 94.5, "height": 62.0, "thickness": 1.6, "corner_radius": 4.0 },
+    "active_screen_aperture_mm": { "width": 73.4, "height": 49.0 },
+    "rear_black_housing_mm": { "width": 82.94, "height": 58.36, "depth": 9.8 },
+    "mounting_ears_pitch_mm": { "pitch_x": 84.3, "pitch_y": 52.3, "hole_diameter": 2.6 }
+  },
+  "laser_cutting_profiles": [
+    {
+      "profile_id": "full_glass_96x63",
+      "name": "Option 1: Full Glass Drop-In Cutout (Recommended for smooth insertion)",
+      "cut_width_mm": 96.0,
+      "cut_height_mm": 63.0,
+      "corner_radius_mm": 3.0,
+      "center_coords_mm": [95.0, 43.0],
+      "bounds_x_mm": [47.0, 143.0],
+      "bounds_y_mm": [11.5, 74.5],
+      "clearance_to_bottom_screw_boss_mm": 4.0,
+      "clearance_to_middle_screw_hole_center_mm": 8.0,
+      "clearance_to_right_door_edge_mm": 10.0,
+      "top_label_overlap_mm": 4.5,
+      "files": {
+        "dxf": "CrealityFalcon_DisplayCutout_full_glass_96x63.dxf",
+        "svg": "CrealityFalcon_DisplayCutout_full_glass_96x63.svg",
+        "gcode": "CrealityFalcon_DisplayCutout_full_glass_96x63.gcode"
+      }
+    },
+    {
+      "profile_id": "flush_body_85x56",
+      "name": "Option 2: Flush Body Pass-Through (Rear body passes through, glass flange rests on front)",
+      "cut_width_mm": 85.0,
+      "cut_height_mm": 56.0,
+      "corner_radius_mm": 2.5,
+      "center_coords_mm": [97.5, 45.5],
+      "bounds_x_mm": [55.0, 140.0],
+      "bounds_y_mm": [17.5, 73.5],
+      "clearance_to_bottom_screw_boss_mm": 5.0,
+      "clearance_to_middle_screw_hole_center_mm": 9.0,
+      "clearance_to_right_door_edge_mm": 13.0,
+      "top_label_margin_mm": 1.5,
+      "files": {
+        "dxf": "CrealityFalcon_DisplayCutout_flush_body_85x56.dxf",
+        "svg": "CrealityFalcon_DisplayCutout_flush_body_85x56.svg",
+        "gcode": "CrealityFalcon_DisplayCutout_flush_body_85x56.gcode"
+      }
+    },
+    {
+      "profile_id": "screen_window_75x51",
+      "name": "Option 3: Active Screen Window + 4 Corner Screws (Internal mounting to door face)",
+      "cut_width_mm": 75.0,
+      "cut_height_mm": 51.0,
+      "corner_radius_mm": 1.5,
+      "center_coords_mm": [97.5, 47.5],
+      "bounds_x_mm": [60.0, 135.0],
+      "bounds_y_mm": [22.0, 73.0],
+      "clearance_to_bottom_screw_boss_mm": 5.5,
+      "has_mounting_holes": true,
+      "mounting_holes": {
+        "count": 4,
+        "diameter_mm": 2.6,
+        "pitch_x_mm": 84.3,
+        "pitch_y_mm": 52.3,
+        "coords_mm": [
+          [55.35, 21.35],
+          [139.65, 21.35],
+          [139.65, 73.65],
+          [55.35, 73.65]
+        ]
+      },
+      "files": {
+        "dxf": "CrealityFalcon_DisplayCutout_screen_window_75x51.dxf",
+        "svg": "CrealityFalcon_DisplayCutout_screen_window_75x51.svg",
+        "gcode": "CrealityFalcon_DisplayCutout_screen_window_75x51.gcode"
+      }
+    }
+  ],
+  "recommended_gcode_parameters": {
+    "feed_rate_cutting_mm_min": 400,
+    "laser_power_percent": 90,
+    "laser_power_s_val": 900,
+    "passes": 4,
+    "framing_speed_mm_min": 1200,
+    "framing_power_s_val": 5,
+    "inter_pass_pause_sec": 0.2
+  },
+  "physical_verification_artifacts": {
+    "printable_pdf_1to1": "CrealityFalcon_SpeakerDoor_Template_1to1.pdf",
+    "interactive_html_tool": "laser_cutter_door_alignment.html",
+    "exact_overlay_image": "laser_cutout_exact_overlay.png",
+    "door_photo": "speaker_backdoor_photo.png"
+  }
+}

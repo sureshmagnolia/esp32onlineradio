@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Creality Falcon 5W Laser Cutout Alignment Tool</title>
+  <style>
+    :root {
+      --bg: #0f172a;
+      --card: #1e293b;
+      --accent: #38bdf8;
+      --danger: #ef4444;
+      --success: #22c55e;
+      --warning: #f59e0b;
+      --text: #f8fafc;
+      --subtext: #94a3b8;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    body { background: var(--bg); color: var(--text); padding: 20px; display: flex; flex-direction: column; align-items: center; min-height: 100vh; }
+    .header { text-align: center; max-width: 900px; margin-bottom: 20px; }
+    .header h1 { font-size: 1.6rem; color: var(--accent); margin-bottom: 6px; }
+    .header p { font-size: 0.9rem; color: var(--subtext); }
+    
+    .container { display: flex; flex-wrap: wrap; gap: 20px; max-width: 1280px; width: 100%; justify-content: center; }
+    .canvas-panel { background: var(--card); border-radius: 12px; padding: 15px; border: 1px solid #334155; position: relative; display: flex; flex-direction: column; align-items: center; }
+    canvas { background: #000; border-radius: 8px; cursor: crosshair; max-width: 100%; height: auto; box-shadow: 0 10px 25px -5px rgba(0,0,0,0.5); }
+    
+    .control-panel { background: var(--card); border-radius: 12px; padding: 20px; border: 1px solid #334155; flex: 1; min-width: 320px; max-width: 420px; display: flex; flex-direction: column; gap: 16px; }
+    .btn-group { display: flex; flex-direction: column; gap: 8px; }
+    .btn-opt { background: #334155; color: var(--text); border: 1px solid #475569; padding: 10px 14px; border-radius: 8px; text-align: left; cursor: pointer; transition: all 0.2s; font-size: 0.85rem; }
+    .btn-opt:hover { background: #475569; }
+    .btn-opt.active { background: #0284c7; border-color: var(--accent); font-weight: bold; }
+    .btn-opt small { display: block; color: var(--subtext); font-weight: normal; margin-top: 3px; }
+    
+    .slider-group { display: flex; flex-direction: column; gap: 10px; background: #0f172a; padding: 12px; border-radius: 8px; border: 1px solid #334155; }
+    .slider-row { display: flex; justify-content: space-between; align-items: center; font-size: 0.85rem; }
+    .slider-row span { color: var(--accent); font-weight: bold; }
+    input[type=range] { width: 100%; accent-color: var(--accent); }
+    
+    .stats-card { background: #0b1329; border: 1px solid #1e3a8a; border-radius: 8px; padding: 12px; font-size: 0.85rem; display: flex; flex-direction: column; gap: 6px; }
+    .stat-line { display: flex; justify-content: space-between; }
+    .stat-val { font-weight: bold; }
+    .stat-val.safe { color: var(--success); }
+    .stat-val.warn { color: var(--warning); }
+    .stat-val.danger { color: var(--danger); }
+    
+    .links-card { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
+    .dl-btn { display: inline-block; background: #0284c7; color: white; text-decoration: none; padding: 8px 12px; border-radius: 6px; font-size: 0.85rem; text-align: center; transition: background 0.2s; }
+    .dl-btn:hover { background: #0369a1; }
+    .dl-btn.outline { background: transparent; border: 1px solid #475569; color: var(--subtext); }
+    .dl-btn.outline:hover { background: #334155; color: white; }
+  </style>
+</head>
+<body>
+
+  <div class="header">
+    <h1>Creality Falcon 5W Laser Cutout Alignment Tool</h1>
+    <p>Real-time visual alignment of the ESP32-S3 JC3248W535 display cutout on the speaker back door (153.0 × 90.0 mm)</p>
+  </div>
+
+  <div class="container">
+    <div class="canvas-panel">
+      <canvas id="viewCanvas" width="993" height="607"></canvas>
+      <div style="margin-top: 8px; font-size: 0.75rem; color: var(--subtext);">
+        Interactive visual alignment: Red box = Laser Cut | White box = Active IPS Screen | Cyan circles = Screw Bosses
+      </div>
+    </div>
+
+    <div class="control-panel">
+      <h3 style="font-size: 1.1rem; color: var(--accent);">Select Cutout Profile</h3>
+      <div class="btn-group">
+        <button class="btn-opt active" onclick="selectProfile(0)">
+          Option 1: Full Glass Cutout (96.0 × 63.0 mm)
+          <small>Drop-in opening for entire 94.5x62mm glass module. 4.0mm clearance above bottom screw bosses.</small>
+        </button>
+        <button class="btn-opt" onclick="selectProfile(1)">
+          Option 2: Flush Body Cutout (85.0 × 56.0 mm)
+          <small>Rear body passes through, glass flange rests on door. Leaves 5.0mm above boss & preserves top labels.</small>
+        </button>
+        <button class="btn-opt" onclick="selectProfile(2)">
+          Option 3: Screen Window (75.0 × 51.0 mm) + 4 Screws
+          <small>Internal display mount. 75x51mm screen aperture + 4 corner pilot holes (pitch 84.3x52.3mm).</small>
+        </button>
+      </div>
+
+      <div class="slider-group">
+        <div class="slider-row">
+          <label>Nudge X Offset:</label>
+          <span id="xVal">0.0 mm</span>
+        </div>
+        <input type="range" id="xSlider" min="-15" max="15" step="0.5" value="0" oninput="updateSliders()">
+        
+        <div class="slider-row">
+          <label>Nudge Y Offset:</label>
+          <span id="yVal">0.0 mm</span>
+        </div>
+        <input type="range" id="ySlider" min="-10" max="10" step="0.5" value="0" oninput="updateSliders()">
+        <button style="background:transparent; border:none; color:var(--accent); font-size:0.75rem; cursor:pointer; text-align:right;" onclick="resetSliders()">Reset Offsets</button>
+      </div>
+
+      <div class="stats-card">
+        <div class="stat-line">
+          <span>Cutout Dimensions:</span>
+          <span class="stat-val" id="statDims">96.0 × 63.0 mm</span>
+        </div>
+        <div class="stat-line">
+          <span>Space Above Screw Boss:</span>
+          <span class="stat-val safe" id="statBossSpace">4.0 mm (Safe)</span>
+        </div>
+        <div class="stat-line">
+          <span>Top Label Clearance:</span>
+          <span class="stat-val safe" id="statTopSpace">4.5 mm</span>
+        </div>
+        <div class="stat-line">
+          <span>Right Door Margin:</span>
+          <span class="stat-val safe" id="statRightMargin">10.0 mm</span>
+        </div>
+      </div>
+
+      <div class="links-card">
+        <a class="dl-btn" href="CrealityFalcon_DisplayCutout_full_glass_96x63.dxf" download>Download DXF (AutoCAD R12)</a>
+        <a class="dl-btn" href="CrealityFalcon_DisplayCutout_full_glass_96x63.svg" download>Download SVG (1:1 mm)</a>
+        <a class="dl-btn" href="CrealityFalcon_DisplayCutout_full_glass_96x63.gcode" download>Download G-Code (Falcon 5W)</a>
+        <a class="dl-btn outline" href="CrealityFalcon_SpeakerDoor_Template_1to1.pdf" target="_blank">View 1:1 Printable PDF Template</a>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const canvas = document.getElementById('viewCanvas');
+    const ctx = canvas.getContext('2d');
+
+    const x0 = 92;
+    const y0 = 85;
+    const scaleX = 766.0 / 153.0;
+    const scaleY = 448.0 / 90.0;
+
+    const PROFILES = [
+      { name: "Full Glass Cutout", w: 96.0, h: 63.0, r: 3.0, baseCX: 95.0, baseCY: 43.0, holes: false, file: "full_glass_96x63" },
+      { name: "Flush Body Cutout", w: 85.0, h: 56.0, r: 2.5, baseCX: 97.5, baseCY: 45.5, holes: false, file: "flush_body_85x56" },
+      { name: "Screen Window + 4 Screws", w: 75.0, h: 51.0, r: 1.5, baseCX: 97.5, baseCY: 47.5, holes: true, file: "screen_window_75x51" }
+    ];
+
+    const BOSSES = [
+      { x: 53.7, y: 81.3, label: "Left Boss" },
+      { x: 98.6, y: 82.5, label: "Middle Boss" },
+      { x: 144.7, y: 84.4, label: "Right Boss" }
+    ];
+
+    let currentProfileIdx = 0;
+    let offsetX = 0.0;
+    let offsetY = 0.0;
+
+    const bgImage = new Image();
+    bgImage.src = 'speaker_backdoor_photo.png';
+    bgImage.onload = () => render();
+
+    function selectProfile(idx) {
+      currentProfileIdx = idx;
+      document.querySelectorAll('.btn-opt').forEach((btn, i) => {
+        btn.classList.toggle('active', i === idx);
+      });
+      updateLinks();
+      render();
+    }
+
+    function updateSliders() {
+      offsetX = parseFloat(document.getElementById('xSlider').value);
+      offsetY = parseFloat(document.getElementById('ySlider').value);
+      document.getElementById('xVal').textContent = (offsetX >= 0 ? '+' : '') + offsetX.toFixed(1) + ' mm';
+      document.getElementById('yVal').textContent = (offsetY >= 0 ? '+' : '') + offsetY.toFixed(1) + ' mm';
+      render();
+    }
+
+    function resetSliders() {
+      document.getElementById('xSlider').value = 0;
+      document.getElementById('ySlider').value = 0;
+      updateSliders();
+    }
+
+    function updateLinks() {
+      const p = PROFILES[currentProfileIdx];
+      const links = document.querySelectorAll('.links-card .dl-btn');
+      links[0].href = `CrealityFalcon_DisplayCutout_${p.file}.dxf`;
+      links[1].href = `CrealityFalcon_DisplayCutout_${p.file}.svg`;
+      links[2].href = `CrealityFalcon_DisplayCutout_${p.file}.gcode`;
+    }
+
+    function render() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      if (bgImage.complete) {
+        ctx.drawImage(bgImage, 0, 0);
+      }
+
+      const p = PROFILES[currentProfileIdx];
+      const cx = p.baseCX + offsetX;
+      const cy = p.baseCY + offsetY;
+      const w = p.w;
+      const h = p.h;
+      const xMin = cx - w / 2.0;
+      const xMax = cx + w / 2.0;
+      const yMin = cy - h / 2.0;
+      const yMax = cy + h / 2.0;
+
+      // Draw bottom screw bosses
+      BOSSES.forEach(b => {
+        const px = x0 + b.x * scaleX;
+        const py = y0 + b.y * scaleY;
+        ctx.strokeStyle = '#00e5ff';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(px, py, 4.0 * scaleY, 0, Math.PI * 2);
+        ctx.stroke();
+
+        ctx.fillStyle = '#00e5ff';
+        ctx.beginPath();
+        ctx.arc(px, py, 1.5 * scaleY, 0, Math.PI * 2);
+        ctx.fill();
+      });
+
+      // Cutout coordinates on canvas
+      const px1 = x0 + xMin * scaleX;
+      const px2 = x0 + xMax * scaleX;
+      const py1 = y0 + yMin * scaleY;
+      const py2 = y0 + yMax * scaleY;
+
+      // Semi-transparent cut fill
+      ctx.fillStyle = 'rgba(239, 68, 68, 0.25)';
+      ctx.fillRect(px1, py1, px2 - px1, py2 - py1);
+
+      // Cut boundary line (Red)
+      ctx.strokeStyle = '#ef4444';
+      ctx.lineWidth = 3;
+      ctx.strokeRect(px1, py1, px2 - px1, py2 - py1);
+
+      // Active screen aperture (73.4 x 49.0 mm centered)
+      const scW = 73.4 * scaleX;
+      const scH = 49.0 * scaleY;
+      const scCX = (px1 + px2) / 2.0;
+      const scCY = (py1 + py2) / 2.0;
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(scCX - scW/2, scCY - scH/2, scW, scH);
+
+      // Pilot screw holes if applicable
+      if (p.holes) {
+        for (let sx of [-1, 1]) {
+          for (let sy of [-1, 1]) {
+            const hx = x0 + (cx + sx * (84.3 / 2.0)) * scaleX;
+            const hy = y0 + (cy + sy * (52.3 / 2.0)) * scaleY;
+            ctx.strokeStyle = '#38bdf8';
+            ctx.fillStyle = '#38bdf8';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.arc(hx, hy, 1.3 * scaleX, 0, Math.PI * 2);
+            ctx.stroke();
+            ctx.fill();
+          }
+        }
+      }
+
+      // Clearance indicator to middle screw boss
+      const middleBossTopY = 78.5;
+      const spaceAboveBoss = middleBossTopY - yMax;
+      const midPx = x0 + 98.6 * scaleX;
+      const bossTopPy = y0 + middleBossTopY * scaleY;
+
+      ctx.strokeStyle = spaceAboveBoss >= 3.0 ? '#22c55e' : (spaceAboveBoss > 1.0 ? '#f59e0b' : '#ef4444');
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(midPx, py2);
+      ctx.lineTo(midPx, bossTopPy);
+      ctx.stroke();
+
+      // Stats readouts
+      document.getElementById('statDims').textContent = `${w.toFixed(1)} × ${h.toFixed(1)} mm`;
+      
+      const bossSpan = document.getElementById('statBossSpace');
+      bossSpan.textContent = `${spaceAboveBoss.toFixed(1)} mm ${spaceAboveBoss >= 3.0 ? '(Safe & Rigid)' : '(Tight)'}`;
+      bossSpan.className = 'stat-val ' + (spaceAboveBoss >= 3.0 ? 'safe' : (spaceAboveBoss > 1.0 ? 'warn' : 'danger'));
+
+      const topSpace = yMin - 11.5;
+      document.getElementById('statTopSpace').textContent = `${Math.abs(topSpace).toFixed(1)} mm ${topSpace >= 0 ? 'below ports' : 'overlaps ports'}`;
+      
+      const rightMargin = 153.0 - xMax;
+      document.getElementById('statRightMargin').textContent = `${rightMargin.toFixed(1)} mm to right edge`;
+    }
+  </script>
+</body>
+</html>

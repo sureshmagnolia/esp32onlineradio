@@ -159,9 +159,6 @@ static uint32_t lastGlobalTouchAction = 0;
 bool isDebouncedTouch(uint32_t minGapMs = 320) {
     // Wake up backlight if it was turned off by auto-off or sleep
     digitalWrite(TFT_BLK, TFT_BLK_ON_LEVEL);
-    if (alarmActivePlaying) {
-        alarmActivePlaying = false; // User interacted with device, cancel auto-off
-    }
     uint32_t now = millis();
     if (now - lastGlobalTouchAction < minGapMs) {
         return false;
@@ -1321,10 +1318,18 @@ static void clock_card_clicked_cb(lv_event_t* e) {
 
 static void btn_sleep_cb(lv_event_t* e) {
     if (!isDebouncedTouch()) return;
+    if (alarmActivePlaying) {
+        Serial.println("[ALARM] User triggered sleep - canceling active alarm auto-off.");
+        alarmActivePlaying = false;
+    }
     openPowerOffPrompt();
 }
 
 static void card_long_press_cb(lv_event_t* e) {
+    if (alarmActivePlaying) {
+        Serial.println("[ALARM] User long-pressed card - canceling active alarm auto-off.");
+        alarmActivePlaying = false;
+    }
     openPowerOffPrompt();
 }
 
@@ -1350,6 +1355,11 @@ static void btn_next_cb(lv_event_t* e) {
 
 static void btn_play_cb(lv_event_t* e) {
     if (!isDebouncedTouch()) return;
+
+    if (alarmActivePlaying) {
+        Serial.println("[ALARM] User tapped Play/Pause - terminating alarm session.");
+        alarmActivePlaying = false;
+    }
 
     if (currentSource == SRC_RADIO && WiFi.status() != WL_CONNECTED) {
         bsp_display_lock(0);
@@ -2734,17 +2744,35 @@ void checkAutoOnTimer() {
             lastTimerTriggerDay = timeinfo.tm_yday;
             Serial.printf("[TIMER ALARM] Triggering Auto-On Alarm at %02d:%02d (Duration: %d min)!\n", 
                           timerHour, timerMin, timerDuration);
+
             // Ensure display backlight is turned on
             digitalWrite(TFT_BLK, TFT_BLK_ON_LEVEL);
-            // Ensure unmuted
+
+            // If Wi-Fi dropped while idle overnight, reconnect immediately
+            if (WiFi.status() != WL_CONNECTED) {
+                Serial.println("[TIMER ALARM] Wi-Fi disconnected at alarm time. Reconnecting now...");
+                initWiFi();
+            }
+
+            // Ensure unmuted & reasonable volume
             if (isMuted) {
                 toggleMute();
             }
-            // Start playing last station if not already playing
-            if (!isPlaying && !filteredIndices.empty()) {
+            if (currentVolume < 10) {
+                setSystemVolume(12);
+            }
+
+            // Cleanly reset any existing, paused or stalled audio before starting alarm
+            audio.stopSong();
+            isPlaying = false;
+            isBuffering = false;
+
+            // Start playing alarm radio station
+            if (!filteredIndices.empty()) {
                 currentSource = SRC_RADIO;
                 playCurrentStation();
             }
+
             // Arm auto-off countdown if duration > 0
             if (timerDuration > 0) {
                 alarmActivePlaying = true;
@@ -3494,6 +3522,30 @@ void setup() {
     // If power was interrupted while in Standby mode, keep screen off and return immediately to Deep Sleep
     if (!wokeFromTouch && !wokeFromTimer && savedStandby) {
         Serial.println("\n[POWER] Cold Boot detected, but radio was in Standby mode before power loss.");
+        if (timerEnabled) {
+            Serial.println("[POWER] Auto-On Alarm is ENABLED. Connecting to Wi-Fi in background to sync NTP and re-arm RTC alarm...");
+            pinMode(TFT_BLK, OUTPUT);
+            digitalWrite(TFT_BLK, LOW);
+            configTime(gmtOffset_sec, daylightOffset_sec, ntpServer, "time.nist.gov");
+            bool wifiOk = initWiFi();
+            if (wifiOk) {
+                time_t sntpNow = 0;
+                struct tm sntpTime;
+                unsigned long startWait = millis();
+                while (millis() - startWait < 6000) {
+                    time(&sntpNow);
+                    localtime_r(&sntpNow, &sntpTime);
+                    if (sntpTime.tm_year >= (2020 - 1900)) {
+                        Serial.printf("[POWER] NTP synced successfully: %02d:%02d:%02d. Re-arming RTC alarm.\n",
+                                      sntpTime.tm_hour, sntpTime.tm_min, sntpTime.tm_sec);
+                        break;
+                    }
+                    delay(250);
+                }
+            } else {
+                Serial.println("[POWER] Wi-Fi connection failed during Standby NTP sync.");
+            }
+        }
         Serial.println("[POWER] Keeping backlight OFF and returning immediately to Deep Sleep Standby...");
         enterDeepSleep();
         return;
@@ -3544,6 +3596,11 @@ void setup() {
                 alarmAutoOffExpiryMs = millis() + ((uint32_t)timerDuration * 60000UL);
                 Serial.printf("[TIMER ALARM] Auto-off scheduled in %d minutes\n", timerDuration);
             }
+            // Ensure audible alarm volume (at least 12/21) & unmuted
+            if (currentVolume < 10) {
+                currentVolume = 12;
+            }
+            isMuted = false;
         } else {
             Serial.println("[POWER] Cold Boot. Connecting to Wi-Fi and auto-starting radio...");
             prefs.begin("air_radio", false);
@@ -3552,6 +3609,12 @@ void setup() {
         }
 
         bool wifiOk = initWiFi();
+        if (!wifiOk && wokeFromTimer) {
+            Serial.println("[POWER] Wi-Fi initial connect failed on Timer Wakeup, retrying for alarm...");
+            delay(1000);
+            wifiOk = initWiFi();
+        }
+
         updateWiFiStatusBanner();
         updatePlayerUI();
 
@@ -3584,13 +3647,31 @@ void loop() {
             isReconnectingWiFi = false;
             updateWiFiStatusBanner();
             setupWebServer();
-            if (currentSource == SRC_RADIO) {
+            // Only resume playback if the radio was actively playing when connection dropped
+            if (currentSource == SRC_RADIO && isPlaying) {
                 playCurrentStation();
             }
         } else if (millis() - wifiConnectStartTime > 15000) {
             Serial.println("\n[WIFI] Connection Timeout.");
             isReconnectingWiFi = false;
             updateWiFiStatusBanner();
+        }
+    }
+
+    // 2b. Background Wi-Fi Health Watchdog (Every 20 seconds if disconnected while idle)
+    static unsigned long lastWiFiWatchdogMs = 0;
+    if (!apPortalActive && !isReconnectingWiFi && (WiFi.status() != WL_CONNECTED)) {
+        if (millis() - lastWiFiWatchdogMs > 20000) {
+            lastWiFiWatchdogMs = millis();
+            Serial.println("[WIFI WATCHDOG] Connection lost while idle. Attempting background reconnect...");
+            if (currentSSID.length() > 0) {
+                WiFi.mode(WIFI_STA);
+                WiFi.setSleep(false);
+                esp_wifi_set_ps(WIFI_PS_NONE);
+                WiFi.begin(currentSSID.c_str(), currentPass.c_str());
+                wifiConnectStartTime = millis();
+                isReconnectingWiFi = true;
+            }
         }
     }
 
