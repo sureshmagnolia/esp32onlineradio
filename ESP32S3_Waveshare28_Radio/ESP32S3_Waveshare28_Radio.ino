@@ -175,22 +175,100 @@ bool isDebouncedTouch(uint32_t minGapMs = 320) {
 }
 
 // -----------------------------------------------------------------------------
-// Battery Measurement & Charging Detection (GPIO 5)
+// Battery Measurement & Intelligent Charging Detection
 // -----------------------------------------------------------------------------
+static float s_filteredVoltage = 0.0f;
+static bool s_chargingState = false;
+static float s_voltageHistory[8] = {0};
+static int s_historyIdx = 0;
+static int s_historyCount = 0;
+static uint32_t s_lastHistoryMs = 0;
+
 int getBatteryInfo(float* outVoltage = NULL, bool* outCharging = NULL) {
     analogSetAttenuation(ADC_11db);
-    uint32_t raw_mv = analogReadMilliVolts(BAT_ADC_PIN);
-    // 2:1 Voltage Divider on JC3248W535
-    float voltage = (raw_mv * 2.0f) / 1000.0f;
-    if (outVoltage) *outVoltage = voltage;
 
-    bool isCharging = (voltage >= 4.28f);
-    if (outCharging) *outCharging = isCharging;
+    // Multi-sample averaging (8 readings) to filter SAR ADC noise
+    uint32_t sum_mv = 0;
+    for (int i = 0; i < 8; i++) {
+        sum_mv += analogReadMilliVolts(BAT_ADC_PIN);
+        delayMicroseconds(50);
+    }
+    uint32_t raw_mv = sum_mv / 8;
 
-    if (voltage >= 4.18f) return 100;
-    if (voltage <= 3.35f) return 0;
+    // Onboard Resistor Divider (2:1 scale)
+    float instantVoltage = (raw_mv * 2.0f) / 1000.0f;
 
-    int pct = (int)(((voltage - 3.35f) / (4.18f - 3.35f)) * 100.0f);
+    // Exponential Moving Average filter to prevent second-by-second UI jitter
+    if (s_filteredVoltage <= 0.1f) {
+        s_filteredVoltage = instantVoltage;
+    } else {
+        s_filteredVoltage = (s_filteredVoltage * 0.80f) + (instantVoltage * 0.20f);
+    }
+
+    if (outVoltage) *outVoltage = s_filteredVoltage;
+
+    // Track 2-second history window (~16 seconds total) to analyze charge voltage slope
+    uint32_t now = millis();
+    if (now - s_lastHistoryMs >= 2000 || s_historyCount == 0) {
+        s_lastHistoryMs = now;
+        s_voltageHistory[s_historyIdx] = s_filteredVoltage;
+        s_historyIdx = (s_historyIdx + 1) % 8;
+        if (s_historyCount < 8) s_historyCount++;
+    }
+
+    // Rate of voltage change over the history window
+    float vDelta = 0.0f;
+    if (s_historyCount >= 4) {
+        int oldestIdx = (s_historyIdx - s_historyCount + 8) % 8;
+        vDelta = s_filteredVoltage - s_voltageHistory[oldestIdx];
+    }
+
+    // Charging Detection & Latching Logic:
+    // When USB is plugged in, the charger introduces an immediate upward step (vDelta >= +0.02V)
+    // or drives the battery line to high float (>= 4.15V).
+    // Once charging is latched, it remains in charging mode while plugged in and does NOT bounce back to battery.
+    // It exits charging mode when:
+    // 1. USB is unplugged (negative step vDelta <= -0.025V or board reboots on power cut), OR
+    // 2. Voltage drops below 4.05V while trend is negative (vDelta <= -0.015V).
+    bool highFloatVoltage = (s_filteredVoltage >= 4.15f);
+    bool positiveChargeJump = (vDelta >= 0.02f && s_historyCount >= 3);
+    bool negativeDischargeJump = (vDelta <= -0.025f && s_historyCount >= 3);
+
+    if (highFloatVoltage || positiveChargeJump) {
+        s_chargingState = true;
+    } else if (negativeDischargeJump || (s_chargingState && s_filteredVoltage <= 4.05f && vDelta <= -0.015f)) {
+        s_chargingState = false;
+    }
+
+    if (outCharging) *outCharging = s_chargingState;
+
+    // Standard Single-Cell Li-ion / LiPo Discharge Curve (Piecewise Linear)
+    static const struct { float v; int pct; } batCurve[] = {
+        { 4.15f, 100 },
+        { 4.05f,  90 },
+        { 3.95f,  80 },
+        { 3.85f,  65 },
+        { 3.75f,  50 },
+        { 3.68f,  35 },
+        { 3.60f,  20 },
+        { 3.50f,  10 },
+        { 3.35f,   0 }
+    };
+    const int curvePoints = sizeof(batCurve) / sizeof(batCurve[0]);
+
+    if (s_filteredVoltage >= batCurve[0].v) return 100;
+    if (s_filteredVoltage <= batCurve[curvePoints - 1].v) return 0;
+
+    int pct = 50;
+    for (int i = 0; i < curvePoints - 1; i++) {
+        if (s_filteredVoltage <= batCurve[i].v && s_filteredVoltage >= batCurve[i + 1].v) {
+            float rangeV = batCurve[i].v - batCurve[i + 1].v;
+            float ratio = (s_filteredVoltage - batCurve[i + 1].v) / rangeV;
+            pct = batCurve[i + 1].pct + (int)(ratio * (batCurve[i].pct - batCurve[i + 1].pct));
+            break;
+        }
+    }
+
     if (pct < 0) pct = 0;
     if (pct > 100) pct = 100;
     return pct;
@@ -1613,18 +1691,27 @@ static void clock_timer_cb(lv_timer_t* timer) {
 
         char batBuf[32];
         if (isCharging) {
+            // CHARGING MODE: Prominent Lightning Bolt (⚡) in Charging Green
             snprintf(batBuf, sizeof(batBuf), LV_SYMBOL_CHARGE " %d%%", batPct);
-            lv_obj_set_style_text_color(lbl_battery, lv_color_hex(0x00E676), 0); // Green when charging
+            lv_obj_set_style_text_color(lbl_battery, lv_color_hex(0x00E676), 0); // Green
         } else {
-            if (batPct > 60) {
+            // DISCHARGING / BATTERY MODE: Lightning icon is REMOVED!
+            // Clean dynamic battery gauge based on state of charge:
+            if (batPct >= 80) {
                 snprintf(batBuf, sizeof(batBuf), LV_SYMBOL_BATTERY_FULL " %d%%", batPct);
-                lv_obj_set_style_text_color(lbl_battery, lv_color_hex(0x00E5FF), 0); // Cyan
-            } else if (batPct > 20) {
+                lv_obj_set_style_text_color(lbl_battery, lv_color_hex(0x00E5FF), 0); // Cyan (Full)
+            } else if (batPct >= 55) {
+                snprintf(batBuf, sizeof(batBuf), LV_SYMBOL_BATTERY_3 " %d%%", batPct);
+                lv_obj_set_style_text_color(lbl_battery, lv_color_hex(0x26C6DA), 0); // Teal (Good)
+            } else if (batPct >= 25) {
                 snprintf(batBuf, sizeof(batBuf), LV_SYMBOL_BATTERY_2 " %d%%", batPct);
-                lv_obj_set_style_text_color(lbl_battery, lv_color_hex(0xFFD54F), 0); // Amber
+                lv_obj_set_style_text_color(lbl_battery, lv_color_hex(0xFFD54F), 0); // Amber (Mid)
+            } else if (batPct >= 10) {
+                snprintf(batBuf, sizeof(batBuf), LV_SYMBOL_BATTERY_1 " %d%%", batPct);
+                lv_obj_set_style_text_color(lbl_battery, lv_color_hex(0xFF9800), 0); // Orange (Low)
             } else {
                 snprintf(batBuf, sizeof(batBuf), LV_SYMBOL_BATTERY_EMPTY " %d%%", batPct);
-                lv_obj_set_style_text_color(lbl_battery, lv_color_hex(0xFF5252), 0); // Red
+                lv_obj_set_style_text_color(lbl_battery, lv_color_hex(0xFF5252), 0); // Red (Critical)
             }
         }
         lv_label_set_text(lbl_battery, batBuf);

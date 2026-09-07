@@ -168,22 +168,117 @@ bool isDebouncedTouch(uint32_t minGapMs = 320) {
 }
 
 // -----------------------------------------------------------------------------
-// Battery Measurement & Charging Detection (GPIO 5)
+// Battery Measurement & Intelligent Charging Detection (GPIO 5)
 // -----------------------------------------------------------------------------
+static float s_filteredVoltage = 0.0f;
+static bool s_chargingState = false;
+static float s_voltageHistory[8] = {0};
+static int s_historyIdx = 0;
+static int s_historyCount = 0;
+static uint32_t s_lastHistoryMs = 0;
+
 int getBatteryInfo(float* outVoltage = NULL, bool* outCharging = NULL) {
     analogSetAttenuation(ADC_11db);
-    uint32_t raw_mv = analogReadMilliVolts(BAT_ADC_PIN);
-    // 2:1 Voltage Divider on JC3248W535
-    float voltage = (raw_mv * 2.0f) / 1000.0f;
-    if (outVoltage) *outVoltage = voltage;
 
-    bool isCharging = (voltage >= 4.28f);
-    if (outCharging) *outCharging = isCharging;
+    // Multi-sample averaging (8 readings) to filter SAR ADC noise
+    uint32_t sum_mv = 0;
+    for (int i = 0; i < 8; i++) {
+        sum_mv += analogReadMilliVolts(BAT_ADC_PIN);
+        delayMicroseconds(50);
+    }
+    uint32_t raw_mv = sum_mv / 8;
 
-    if (voltage >= 4.18f) return 100;
-    if (voltage <= 3.35f) return 0;
+    // Onboard Resistor Divider on JC3248W535:
+    // Community calibrated multiplier: 1.72f (maps raw ADC mV on GPIO 5 to actual LiPo cell voltage)
+    float instantVoltage = (raw_mv * 1.72f) / 1000.0f;
 
-    int pct = (int)(((voltage - 3.35f) / (4.18f - 3.35f)) * 100.0f);
+    // Exponential Moving Average filter to prevent second-by-second UI jitter
+    if (s_filteredVoltage <= 0.1f) {
+        s_filteredVoltage = instantVoltage;
+    } else {
+        s_filteredVoltage = (s_filteredVoltage * 0.80f) + (instantVoltage * 0.20f);
+    }
+
+    if (outVoltage) *outVoltage = s_filteredVoltage;
+
+    // Track 2-second history window (~16 seconds total) to analyze charge voltage slope
+    uint32_t now = millis();
+    if (now - s_lastHistoryMs >= 2000 || s_historyCount == 0) {
+        s_lastHistoryMs = now;
+        s_voltageHistory[s_historyIdx] = s_filteredVoltage;
+        s_historyIdx = (s_historyIdx + 1) % 8;
+        if (s_historyCount < 8) s_historyCount++;
+    }
+
+    // Rate of voltage change over the history window
+    float vDelta = 0.0f;
+    if (s_historyCount >= 4) {
+        int oldestIdx = (s_historyIdx - s_historyCount + 8) % 8;
+        vDelta = s_filteredVoltage - s_voltageHistory[oldestIdx];
+    }
+
+    // Charging Detection & Latching Logic:
+    // 1. When USB is connected, charger drives battery voltage to high float (>= 4.13V)
+    //    or causes an immediate positive step jump (vDelta >= +0.035V).
+    // 2. On battery under load, cell voltage settles below 4.10V and drifts downward.
+    // 3. When unplugged, negative step jump (vDelta <= -0.030V) or power-cut reboot resets state to discharging.
+    bool highFloatVoltage = (s_filteredVoltage >= 4.13f);
+    bool positiveChargeJump = (vDelta >= 0.035f && s_historyCount >= 3);
+    bool negativeDischargeJump = (vDelta <= -0.030f && s_historyCount >= 3);
+
+    if (highFloatVoltage || positiveChargeJump) {
+        s_chargingState = true;
+    } else if (negativeDischargeJump || (s_chargingState && s_filteredVoltage <= 4.05f && vDelta <= -0.015f)) {
+        s_chargingState = false;
+    }
+
+    if (outCharging) *outCharging = s_chargingState;
+
+    // Calculate effective battery voltage for percentage estimation:
+    // When charging, the measured terminal voltage is elevated by ~0.15V-0.20V due to
+    // charging current (IR boost) and absence of the ~300mA discharge load sag.
+    // We compensate so the percentage reflects true chemical State of Charge (SOC),
+    // preventing the display from prematurely claiming 100% when plugged in.
+    float evalVoltage = s_filteredVoltage;
+    if (s_chargingState) {
+        // As voltage approaches 4.22V (saturation), charge current tapers down towards 0.
+        // At 4.10V-4.18V, offset is ~0.18V, smoothly tapering as cell saturates.
+        float offset = 0.18f;
+        if (evalVoltage > 4.10f) {
+            float satRatio = (evalVoltage - 4.10f) / (4.24f - 4.10f);
+            if (satRatio > 1.0f) satRatio = 1.0f;
+            offset = 0.18f - (satRatio * 0.08f); // 0.18V down to 0.10V
+        }
+        evalVoltage -= offset;
+    }
+
+    // Standard Single-Cell Li-ion / LiPo Discharge Curve (Piecewise Linear)
+    static const struct { float v; int pct; } batCurve[] = {
+        { 4.12f, 100 },
+        { 4.02f,  90 },
+        { 3.92f,  80 },
+        { 3.82f,  65 },
+        { 3.72f,  50 },
+        { 3.65f,  35 },
+        { 3.55f,  20 },
+        { 3.42f,  10 },
+        { 3.25f,   0 }
+    };
+    const int curvePoints = sizeof(batCurve) / sizeof(batCurve[0]);
+
+    if (evalVoltage >= batCurve[0].v) return 100;
+    if (evalVoltage <= batCurve[curvePoints - 1].v) return 0;
+
+    int pct = 50;
+    for (int i = 0; i < curvePoints - 1; i++) {
+        if (evalVoltage <= batCurve[i].v && evalVoltage >= batCurve[i + 1].v) {
+            float rangeV = batCurve[i].v - batCurve[i + 1].v;
+            float ratio = (evalVoltage - batCurve[i + 1].v) / rangeV;
+            pct = batCurve[i + 1].pct + (int)(ratio * (batCurve[i].pct - batCurve[i + 1].pct));
+            break;
+        }
+    }
+
     if (pct < 0) pct = 0;
     if (pct > 100) pct = 100;
     return pct;
@@ -1619,18 +1714,27 @@ static void clock_timer_cb(lv_timer_t* timer) {
 
         char batBuf[32];
         if (isCharging) {
+            // CHARGING MODE: Prominent Lightning Bolt (⚡) in Charging Green
             snprintf(batBuf, sizeof(batBuf), LV_SYMBOL_CHARGE " %d%%", batPct);
-            lv_obj_set_style_text_color(lbl_battery, lv_color_hex(0x00E676), 0); // Green when charging
+            lv_obj_set_style_text_color(lbl_battery, lv_color_hex(0x00E676), 0); // Green
         } else {
-            if (batPct > 60) {
+            // DISCHARGING / BATTERY MODE: Lightning icon is REMOVED!
+            // Clean dynamic battery gauge based on state of charge:
+            if (batPct >= 80) {
                 snprintf(batBuf, sizeof(batBuf), LV_SYMBOL_BATTERY_FULL " %d%%", batPct);
-                lv_obj_set_style_text_color(lbl_battery, lv_color_hex(0x00E5FF), 0); // Cyan
-            } else if (batPct > 20) {
+                lv_obj_set_style_text_color(lbl_battery, lv_color_hex(0x00E5FF), 0); // Cyan (Full)
+            } else if (batPct >= 55) {
+                snprintf(batBuf, sizeof(batBuf), LV_SYMBOL_BATTERY_3 " %d%%", batPct);
+                lv_obj_set_style_text_color(lbl_battery, lv_color_hex(0x26C6DA), 0); // Teal (Good)
+            } else if (batPct >= 25) {
                 snprintf(batBuf, sizeof(batBuf), LV_SYMBOL_BATTERY_2 " %d%%", batPct);
-                lv_obj_set_style_text_color(lbl_battery, lv_color_hex(0xFFD54F), 0); // Amber
+                lv_obj_set_style_text_color(lbl_battery, lv_color_hex(0xFFD54F), 0); // Amber (Mid)
+            } else if (batPct >= 10) {
+                snprintf(batBuf, sizeof(batBuf), LV_SYMBOL_BATTERY_1 " %d%%", batPct);
+                lv_obj_set_style_text_color(lbl_battery, lv_color_hex(0xFF9800), 0); // Orange (Low)
             } else {
                 snprintf(batBuf, sizeof(batBuf), LV_SYMBOL_BATTERY_EMPTY " %d%%", batPct);
-                lv_obj_set_style_text_color(lbl_battery, lv_color_hex(0xFF5252), 0); // Red
+                lv_obj_set_style_text_color(lbl_battery, lv_color_hex(0xFF5252), 0); // Red (Critical)
             }
         }
         lv_label_set_text(lbl_battery, batBuf);
@@ -3106,9 +3210,9 @@ static esp_err_t http_status_handler(httpd_req_t *req) {
         lang  = runtimeStations[realIdx].language.c_str();
     }
 
-    char buf[320];
+    char buf[340];
     snprintf(buf, sizeof(buf),
-             "{\"playing\":%s,\"buffering\":%s,\"source\":\"%s\",\"title\":\"%s\",\"state\":\"%s\",\"lang\":\"%s\",\"vol\":%d,\"muted\":%s,\"bat\":%d,\"charging\":%s,\"total\":%d}",
+             "{\"playing\":%s,\"buffering\":%s,\"source\":\"%s\",\"title\":\"%s\",\"state\":\"%s\",\"lang\":\"%s\",\"vol\":%d,\"muted\":%s,\"bat\":%d,\"v\":%.3f,\"raw\":%u,\"charging\":%s,\"total\":%d}",
              isPlaying ? "true" : "false",
              isBuffering ? "true" : "false",
              currentSource == SRC_SD ? "sd" : "radio",
@@ -3116,6 +3220,8 @@ static esp_err_t http_status_handler(httpd_req_t *req) {
              currentVolume,
              isMuted ? "true" : "false",
              batPct,
+             batVoltage,
+             analogReadMilliVolts(BAT_ADC_PIN),
              isCharging ? "true" : "false",
              (int)runtimeStations.size());
 
