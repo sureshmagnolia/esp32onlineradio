@@ -14,12 +14,15 @@ This repository contains the production-grade firmware for the **Guition JC3248W
    - **MicroSD Audio Player**: Local MP3/AAC playback with auto-advance and shuffle mode.
    - **10-Attempt Connection Retry Engine**: Automatic connection retries (spaced by 2.5s) upon connection failures or buffering stalls (>12s) before declaring a station offline, without interrupting ongoing playback.
 2. **Interactive 3.5" Touch UI (LVGL 8.x + AXS15231B)**:
-   - **Modern Split Dashboard**: Live station display, station metadata, volume control, mute, audio visualizer, battery gauge, and digital clock.
+   - **Modern Split Dashboard**: Live station display, station metadata, vertical volume slider, mute toggle, audio visualizer, battery gauge, and giant digital clock with date and day.
    - **On-Device Auto-On Alarm & Sleep Timer**:
      - Dedicated touch modal accessible directly by tapping the clock card.
-     - Hour (`+`/`-`), Minute (`+`/`-`), Enable/Disable toggle, and Duration selector (`15m`, `30m`, `45m`, `60m`, `90m`, `120m`, `Continuous`).
+     - Hour (`+`/`-`), Minute (`+`/`-`), interactive **AM/PM touch toggle button** (Cyan for AM, Amber for PM), Enable/Disable toggle, and Duration selector (`15m`, `30m`, `45m`, `60m`, `90m`, `120m`, `Continuous`).
      - Dynamic clock badge: `🔔 06:30AM (30m)` or `🔔 OFF (Tap)`.
-     - When alarm triggers, display backlight turns on, radio begins playback, and automatically shuts off after the set duration. Any user touch cancels auto-off.
+     - **24/7 Everyday Reliability**: Works continuously day after day whether the radio is asleep in Standby, awake displaying the clock, or paused.
+     - **Standby Power Recovery**: If power is cut while in Standby, the device silently syncs NTP time in the background with backlight OFF, accurately re-arms the hardware RTC alarm timer, and returns to deep sleep.
+     - **24/7 Background Wi-Fi Watchdog**: Automatically reconnects dropped Wi-Fi every 20s while idle, ensuring the alarm radio always triggers on time.
+     - **Casual Touch Friendly**: Tapping volume sliders or browsing stations during the morning alarm does not cancel the auto-off timer; only explicit **Pause** or **Power Off** ends the alarm session.
 3. **Web Remote Controller (`http://<device-ip>/`)**:
    - Clean, lightweight REST-driven web application served directly from flash memory.
    - Volume slider, station playback, status polling, and timer management.

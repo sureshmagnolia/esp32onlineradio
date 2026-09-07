@@ -124,3 +124,51 @@ If you wish to remove Board 2 and wire Board 1 directly to a speaker system:
 The complete machine-readable and verbatim chat logs are stored in:
 * `D:\ESP32Radio\history_and_logs\transcript.jsonl` (Compact chronological log)
 * `D:\ESP32Radio\history_and_logs\transcript_full.jsonl` (Complete untruncated transcript)
+
+---
+
+## 7. Waveshare ESP32-S3 Touch LCD 2.8" Standalone Radio & 3D Enclosure (September 2026)
+
+- **Hardware**: Waveshare ESP32-S3-Touch-LCD-2.8 (ST7789 2.8" SPI display, CST328 touch, PCM5101 I2S DAC, 16MB Flash, 8MB Octal PSRAM).
+- **Physical Layout**: Screen oriented in landscape with `BOOT`, `RESET`, and `PWR` buttons along the top edge ($Y=0$).
+- **Multi-Function `BOOT` (GPIO 0)**:
+  - Single click: Next station / SD track.
+  - Double click: Previous station / SD track.
+  - Long press / hold: Smooth volume ramp (+1 every 220ms up to 21).
+  - Standby: RTC wakeup to resume playback.
+- **Enclosure**: Complete parametric 3D desktop enclosure model with internal mounting bosses, speaker grille, and virtual assembly audit in `3D_Enclosure_Waveshare28/`.
+
+---
+
+## 8. JC3248W535 3.5" Smart Radio: Everyday Auto-On Alarm & Standby Recovery (September 2026)
+
+- **Problem**:
+  - The daily auto-on alarm worked on Day 1, but failed on subsequent days.
+  - Investigation identified two root causes:
+    1. **Standby Power Recovery**: When power was cut while in Standby mode, the ESP32-S3 rebooted with clock at epoch 1970 (no Wi-Fi/NTP) and immediately re-entered deep sleep without re-arming the RTC alarm wakeup timer.
+    2. **Casual Touch Disarming**: Tapping volume sliders or station buttons set `alarmActivePlaying = false;`, which permanently disabled the auto-off timer and prevented recurring alarm re-arming.
+- **Fixes Applied & Verified on Device (COM8)**:
+  1. **Standby Silent NTP Recovery**: When booting into standby mode, the system silently connects to Wi-Fi with backlight OFF, synchronizes time via NTP, calculates exact seconds until next alarm, arms `esp_sleep_enable_timer_wakeup()`, and enters deep sleep.
+  2. **Dedicated Dismiss Actions**: Only explicit **Pause** (`btn_play_cb`) or **Power Off** (`btn_sleep_cb`) terminates an active alarm session. Volume changes and station browsing remain non-destructive.
+  3. **Background Wi-Fi Watchdog**: Added a 20s health check in `loop()` so the radio never stays disconnected overnight when left powered on.
+  4. **Auto-On Robustness**: Minimum volume guarantee (level 12), clean audio pipeline flush, and connection retry before starting playback.
+
+---
+
+## 9. Golden Baseline ("AllIsWell") Repository Consolidation (September 2026)
+
+- **Single Golden Folder**: `ESP32S3_JC3248W535_Radio_AllIsWell/` is established as the sole canonical codebase for the 3.5" radio.
+- **Obsolete Folders Removed from Git Tracking**:
+  - `ESP32S3_JC3248W535_Radio/` (redundant duplicate)
+  - `ESP32S3_JC3248W535_Radio_Dev/` (redundant duplicate)
+  - `ESP32S3_3.5_Display_Board_SmartClock/` (legacy experimental clock)
+  - `3D_Enclosure/` (obsolete prototype, superseded by `3D_Enclosure_JC3248W535/` and `Laser_Cuts/`)
+  - Temporary root scrap scripts (`PAGE_INDEX.*`, `capture_boot.py`, `test_*.py`).
+- **Retained & Maintained**:
+  - `ESP32S3_JC3248W535_Radio_AllIsWell/` (JC3248W535 Golden Baseline)
+  - `ESP32S3_Waveshare28_Radio/` (Waveshare 2.8" Standalone Radio)
+  - `3D_Enclosure_JC3248W535/` & `Laser_Cuts/` (JC3248W535 Cabinet & Laser files)
+  - `3D_Enclosure_Waveshare28/` (Waveshare 2.8" 3D Enclosure)
+  - `libraries/` (Patched ESP32-audioI2S, LVGL 8.4, ESP32-A2DP)
+  - `stations_full.json` & `generate_stations_header.py` (Station DB management)
+
