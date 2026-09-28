@@ -29,5 +29,6 @@ JC3248W535EN/
 M5Core2_AIR_Radio/
 history_and_logs/
 ESP32S3_JC3248W535_Radio_PrePauseFix_Backup/
+CrowPanel_1.28_ESP32_HMI/
 __pycache__/
 *.pyc

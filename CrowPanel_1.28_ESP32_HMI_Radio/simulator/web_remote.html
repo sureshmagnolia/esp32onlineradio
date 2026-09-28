@@ -1,0 +1,701 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>EDIFIER 1.28" Web Remote — A Passion for Sound</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&family=Outfit:wght@600;700;800&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg-dark: #0a0c10;
+  --card-bg: #161b22;
+  --border-color: #30363d;
+  --accent-blue: #1f6feb;
+  --accent-cyan: #58a6ff;
+  --accent-green: #238636;
+  --accent-amber: #d29922;
+  --accent-red: #da3633;
+  --accent-purple: #bf7af0;
+  --text-main: #f0f6fc;
+  --text-muted: #8b949e;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, 'Inter', sans-serif;
+  background: var(--bg-dark);
+  color: var(--text-main);
+  padding: 16px;
+  text-align: center;
+  min-height: 100vh;
+}
+
+/* Simulated Browser Address Bar Top Banner */
+.address-banner {
+  background: #11161d;
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  padding: 10px 16px;
+  max-width: 540px;
+  margin: 0 auto 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.5);
+}
+
+.address-url {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--accent-cyan);
+  font-weight: 600;
+  background: #0d1117;
+  padding: 6px 12px;
+  border-radius: 8px;
+  border: 1px solid #30363d;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #3fb950;
+  box-shadow: 0 0 8px #3fb950;
+  display: inline-block;
+}
+
+.box {
+  background: var(--card-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 14px;
+  padding: 16px;
+  margin: 0 auto 14px;
+  max-width: 540px;
+  box-sizing: border-box;
+  box-shadow: 0 6px 18px rgba(0,0,0,0.4);
+  text-align: left;
+}
+
+h2 {
+  margin: 2px 0 10px;
+  color: var(--accent-cyan);
+  font-size: 17px;
+  font-family: 'Outfit', sans-serif;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+h3 {
+  margin: 6px 0 4px;
+  color: #f0f6fc;
+  font-size: 19px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-family: 'Outfit', sans-serif;
+}
+
+.sub {
+  color: var(--text-muted);
+  font-size: 12px;
+  margin-bottom: 12px;
+}
+
+.badge {
+  display: inline-block;
+  padding: 3px 10px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  margin-bottom: 6px;
+}
+.badge-live { background: #238636; color: #fff; }
+.badge-buf { background: #d29922; color: #000; }
+.badge-pause { background: #30363d; color: #8b949e; }
+.badge-ch { background: #1f6feb; color: #fff; font-size: 11px; padding: 2px 8px; border-radius: 10px; font-weight: bold; }
+.badge-lang { background: #21262d; color: #58a6ff; border: 1px solid #30363d; font-size: 11px; padding: 2px 8px; border-radius: 10px; }
+
+.row {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 10px;
+  margin: 12px 0;
+}
+
+.btn {
+  background: #21262d;
+  color: var(--text-main);
+  border: 1px solid var(--border-color);
+  padding: 9px 16px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.btn:hover { background: #30363d; border-color: var(--accent-cyan); }
+.btn:active { transform: scale(0.97); }
+
+.btn-blue { background: #1f6feb; color: #fff; border-color: #388bfd; }
+.btn-blue:hover { background: #388bfd; }
+
+.btn-play { background: #238636; color: #fff; border: none; padding: 6px 12px; border-radius: 6px; font-size: 12px; cursor: pointer; font-weight: 600; }
+.btn-play:hover { background: #2ea043; }
+
+.btn-del { background: #da3633; color: #fff; border: none; padding: 6px 10px; border-radius: 6px; font-size: 12px; cursor: pointer; }
+.btn-del:hover { background: #f85149; }
+
+.btn-add { background: #1f6feb; color: #fff; border: none; padding: 6px 14px; border-radius: 6px; font-size: 12px; cursor: pointer; font-weight: 600; }
+.btn-add:hover { background: #388bfd; }
+
+.btn-saved { background: #21262d; color: #8b949e; border: 1px solid #30363d; padding: 6px 12px; border-radius: 6px; font-size: 12px; }
+
+select, input[type=text], input[type=url], input[type=time], input[type=password] {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 9px 12px;
+  margin: 6px 0;
+  background: #0d1117;
+  color: #f0f6fc;
+  border: 1px solid #30363d;
+  border-radius: 6px;
+  font-size: 13px;
+}
+select:focus, input:focus { outline: none; border-color: #58a6ff; }
+
+#toast {
+  position: fixed;
+  top: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #58a6ff;
+  color: #0d1117;
+  padding: 8px 18px;
+  border-radius: 20px;
+  font-weight: bold;
+  font-size: 13px;
+  display: none;
+  z-index: 99;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.6);
+}
+
+.pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: flex-start;
+  margin: 10px 0;
+}
+
+.pill {
+  padding: 4px 11px;
+  border-radius: 14px;
+  background: #21262d;
+  color: #8b949e;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  border: 1px solid #30363d;
+  transition: all 0.15s ease;
+}
+.pill:hover { color: #c9d1d9; border-color: #58a6ff; }
+.pill.active { background: #1f6feb; color: #fff; border-color: #388bfd; }
+
+.cat-list {
+  max-height: 360px;
+  overflow-y: auto;
+  border: 1px solid #30363d;
+  border-radius: 8px;
+  background: #0d1117;
+  text-align: left;
+}
+
+.cat-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 9px 12px;
+  border-bottom: 1px solid #21262d;
+}
+.cat-item:last-child { border-bottom: none; }
+.cat-info { flex: 1; min-width: 0; padding-right: 10px; }
+.cat-name { font-weight: 600; font-size: 13px; color: #f0f6fc; }
+.cat-meta { font-size: 11px; color: #8b949e; margin-top: 3px; display: flex; align-items: center; gap: 6px; }
+
+table.fav-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 8px;
+  font-size: 12px;
+}
+table.fav-table th, table.fav-table td { padding: 8px 10px; text-align: left; border-bottom: 1px solid #21262d; }
+table.fav-table th { color: #8b949e; font-weight: 600; font-size: 11px; text-transform: uppercase; border-bottom: 1px solid #30363d; }
+</style>
+</head>
+<body>
+
+<div id="toast"></div>
+
+<!-- Top Address Bar -->
+<div class="address-banner">
+  <div class="address-url">
+    <span class="status-dot"></span>
+    <span>http://192.168.4.1/</span>
+  </div>
+  <div style="font-size:11px;color:#8b949e;display:flex;align-items:center;gap:6px;">
+    <span>SoftAP Twin</span>
+    <button class="btn" style="padding:4px 8px;font-size:11px;" onclick="syncStatus()" title="Sync with Simulator">⟳ Sync</button>
+  </div>
+</div>
+
+<!-- 1. Live Radio Remote Box -->
+<div class="box" style="text-align:center;">
+  <h2 style="justify-content:center;font-size:18px;letter-spacing:2px;display:flex;align-items:center;gap:8px;"><svg viewBox="170 55 110 155" width="20" height="20" style="vertical-align:middle;"><path d="M 265,155 L 260,153 L 258,153 L 251,156 L 247,162 L 247,164 L 240,177 L 240,179 L 232,195 L 232,200 L 234,202 L 236,203 L 240,203 L 247,200 L 253,196 L 260,189 L 264,183 L 268,175 L 270,167 L 270,163 L 268,158 Z M 244,110 L 238,110 L 235,111 L 231,115 L 223,131 L 223,133 L 219,140 L 219,142 L 204,172 L 204,174 L 198,185 L 197,188 L 197,194 L 199,198 L 201,200 L 205,202 L 211,202 L 215,200 L 218,197 L 219,195 L 219,193 L 225,182 L 225,180 L 232,167 L 232,165 L 240,150 L 240,148 L 245,139 L 245,137 L 251,126 L 252,123 L 252,119 L 251,116 L 246,111 Z M 227,62 L 222,62 L 218,64 L 215,67 L 207,83 L 207,85 L 202,94 L 202,96 L 195,109 L 195,111 L 193,113 L 193,115 L 188,124 L 188,126 L 186,128 L 186,130 L 181,139 L 177,152 L 177,166 L 179,173 L 183,177 L 187,177 L 190,174 L 195,164 L 195,162 L 202,149 L 202,147 L 207,138 L 207,136 L 223,104 L 223,102 L 228,93 L 228,91 L 235,78 L 236,75 L 236,72 L 234,67 L 231,64 Z" fill="#ffffff" fill-rule="evenodd"/></svg> <b style="color:#fff;">EDIFIER</b> Studio Remote</h2>
+  <div style="font-size:10px;color:#d29922;letter-spacing:1.8px;font-weight:700;margin-bottom:10px;text-transform:uppercase;">A Passion for Sound</div>
+  <div id="t_badge" class="badge badge-live">[ LIVE ]</div>
+  <h3 id="t_name">Akashvani Thrissur</h3>
+  <div class="sub" id="t_meta">Malayalam • Kerala</div>
+  
+  <div class="row">
+    <button type="button" class="btn" onclick="sendCmd('prev','⏮ Previous Station')">⏮ Prev</button>
+    <button type="button" class="btn btn-blue" id="b_play" onclick="sendCmd('play_pause','Play/Pause')">⏸ Pause</button>
+    <button type="button" class="btn" onclick="sendCmd('next','Next Station ⏭')">Next ⏭</button>
+  </div>
+  
+  <div class="row" style="margin-top:14px;">
+    <button type="button" class="btn" id="b_mute" onclick="sendCmd('mute','Mute')">🔊 Mute</button>
+    <input type="range" id="v_slider" min="0" max="21" value="18" style="flex:1;accent-color:#1f6feb;" oninput="sendVol(this.value)">
+    <span id="v_val" style="min-width:44px;font-weight:bold;color:#58a6ff;font-size:13px;">86%</span>
+  </div>
+</div>
+
+<!-- 2. Ambient Light & LED Ring Box -->
+<div class="box">
+  <div style="font-weight:600;color:#bf7af0;margin-bottom:8px;text-align:left;display:flex;align-items:center;gap:6px;">
+    <span>✨</span> 5x NeoPixel Ambient Illumination
+  </div>
+  <div class="row" style="margin:6px 0;gap:10px;">
+    <select id="led_mode" onchange="sendLedConfig()" style="flex:1;">
+      <option value="0">Soft Audio Breathing</option>
+      <option value="1">Volume VU Meter</option>
+      <option value="2">Rotary Movement Reactive</option>
+      <option value="3">Rainbow Cycle</option>
+      <option value="4">Solid Cyan Glow</option>
+      <option value="5">LEDs Disabled</option>
+    </select>
+  </div>
+  <div class="row" style="margin-top:6px;">
+    <label style="font-size:12px;color:#8b949e;min-width:70px;text-align:left;">Brightness:</label>
+    <input type="range" id="led_bright" min="0" max="100" value="35" style="flex:1;accent-color:#bf7af0;" oninput="sendLedConfig()">
+    <span id="led_bval" style="min-width:40px;font-weight:bold;color:#bf7af0;font-size:12px;">35%</span>
+  </div>
+</div>
+
+<!-- 3. Auto-On Alarm & Sleep Timer Box -->
+<div class="box">
+  <div style="font-weight:600;color:#58a6ff;margin-bottom:8px;text-align:left;">⏰ Auto-On Alarm & Sleep Timer</div>
+  <div class="row" style="margin:8px 0;gap:10px;">
+    <input type="time" id="tm_val" value="06:30" style="flex:1;font-size:16px;padding:8px;text-align:center;">
+    <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;color:#f0f6fc;">
+      <input type="checkbox" id="tm_en" style="width:16px;height:16px;"> Enable
+    </label>
+  </div>
+  <div style="margin:8px 0 10px;text-align:left;">
+    <label style="font-size:12px;color:#8b949e;display:block;margin-bottom:4px;">Auto-Off Duration (Playback limit):</label>
+    <select id="tm_dur">
+      <option value="15">15 Minutes</option>
+      <option value="30" selected>30 Minutes</option>
+      <option value="45">45 Minutes</option>
+      <option value="60">60 Minutes</option>
+      <option value="90">90 Minutes</option>
+      <option value="120">120 Minutes</option>
+      <option value="0">Continuous (No Auto-Off)</option>
+    </select>
+  </div>
+  <button type="button" class="btn btn-blue" style="width:100%;margin-top:4px;" onclick="saveTimer()">💾 Save Alarm & Duration</button>
+</div>
+
+<!-- 4. Device Favorites Box -->
+<div class="box">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+    <div style="font-weight:600;color:#ffd54f;font-size:15px;">⭐ Radio Favorites (Stored on Device)</div>
+    <span style="font-size:12px;color:#8b949e;"><span id="favCount" style="color:#58a6ff;font-weight:bold;">7</span> saved</span>
+  </div>
+  <div style="font-size:12px;color:#8b949e;text-align:left;margin-bottom:10px;">
+    Tuned with the rotary knob & 1.28" round touch screen.
+  </div>
+  <div style="overflow-x:auto;">
+    <table class="fav-table">
+      <thead>
+        <tr><th style="width:14%;">CH</th><th style="width:48%;">Station Name</th><th style="width:20%;">Lang</th><th style="width:18%;text-align:right;">Actions</th></tr>
+      </thead>
+      <tbody id="favTableBody">
+        <tr><td colspan="4" style="text-align:center;color:#8b949e;">Loading favorites...</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- 5. Add Custom Stream Box -->
+<div class="box">
+  <div style="font-weight:600;color:#58a6ff;margin-bottom:8px;text-align:left;">➕ Add Custom Stream</div>
+  <input type="text" id="cs_name" placeholder="Station Name (e.g. Club FM)" required>
+  <input type="url" id="cs_url" placeholder="Stream URL (.mp3 / .aac / .m3u8)" required>
+  <div style="display:flex;gap:8px;">
+    <input type="text" id="cs_state" placeholder="State (e.g. Kerala)">
+    <input type="text" id="cs_lang" placeholder="Language (e.g. Malayalam)">
+  </div>
+  <label style="display:block;margin:6px 0 8px;font-size:13px;color:#c9d1d9;text-align:left;cursor:pointer;">
+    <input type="checkbox" id="cs_play_now"> ▶ Play this station immediately
+  </label>
+  <button type="button" class="btn btn-blue" style="width:100%;margin-top:4px;" onclick="submitCustomStation()">➕ Add to Radio Favorites</button>
+</div>
+
+<!-- 6. Master Online Catalog Box -->
+<div class="box">
+  <div style="font-weight:600;color:#58a6ff;font-size:15px;margin-bottom:4px;text-align:left;">🌐 Master Online Catalog (GitHub)</div>
+  <div style="font-size:12px;color:#8b949e;text-align:left;margin-bottom:10px;">
+    Live 270+ station directory. Click <b style="color:#ffd54f;">[⭐ Add]</b> to save any station to your radio.
+  </div>
+  <input type="text" id="catSearch" placeholder="🔍 Search 270+ stations by name, city, state, or language..." oninput="filterCatalog()">
+  <div class="pills" id="catPills">
+    <div class="pill active" onclick="selectPill(this, 'ALL')">All</div>
+    <div class="pill" onclick="selectPill(this, 'Malayalam')">Malayalam</div>
+    <div class="pill" onclick="selectPill(this, 'Hindi')">Hindi</div>
+    <div class="pill" onclick="selectPill(this, 'Tamil')">Tamil</div>
+    <div class="pill" onclick="selectPill(this, 'Telugu')">Telugu</div>
+    <div class="pill" onclick="selectPill(this, 'Kannada')">Kannada</div>
+    <div class="pill" onclick="selectPill(this, 'Classical')">Classical</div>
+    <div class="pill" onclick="selectPill(this, 'English')">English</div>
+  </div>
+  <div class="cat-list" id="catContainer">
+    <div style="padding:20px;text-align:center;color:#8b949e;">Loading 270+ online stations from GitHub...</div>
+  </div>
+</div>
+
+<!-- 7. Always-ON WiFi Connection & AP Setup Box -->
+<div class="box">
+  <div style="font-weight:600;color:#58a6ff;margin-bottom:6px;text-align:left;">📶 WiFi & Access Point Settings</div>
+  <div style="font-size:12px;color:#8b949e;text-align:left;margin-bottom:10px;">
+    SoftAP: <b style="color:#f0f6fc;">CrowPanel-Radio</b> (IP: <span style="color:#58a6ff;">192.168.4.1</span>)<br>
+    Station IP: <span id="sta_ip" style="color:#58a6ff;">192.168.1.145</span>
+  </div>
+  <input type="text" id="wf_ssid" placeholder="Home WiFi SSID">
+  <input type="password" id="wf_pass" placeholder="Home WiFi Password">
+  <button type="button" class="btn btn-blue" style="width:100%;margin-top:6px;" onclick="saveWifi()">💾 Connect to WiFi</button>
+</div>
+
+<script>
+/* =========================================================================
+ * Real-Time Cross-Tab Radio Communication Channel
+ * ========================================================================= */
+const channel = new BroadcastChannel('crowpanel_hmi_radio');
+
+const STARTER_STATIONS = [
+  { name: "AIR Thrissur", state: "Kerala", lang: "Malayalam", url: "https://d1tmej9eu7kw5c.cloudfront.net/f70fdeca437dc326/f70fdeca437dc326.m3u8" },
+  { name: "AIR Calicut", state: "Kerala", lang: "Malayalam", url: "https://d1cvqgmbcpg5yn.cloudfront.net/8321393de70015fc/8321393de70015fc.m3u8" },
+  { name: "AIR Manjeri", state: "Kerala", lang: "Malayalam", url: "https://d1cvqgmbcpg5yn.cloudfront.net/58390a2ed33cea4a/58390a2ed33cea4a.m3u8" },
+  { name: "AIR Real FM", state: "Kerala", lang: "Malayalam", url: "https://d1tmej9eu7kw5c.cloudfront.net/b69c296065db7627/b69c296065db7627.m3u8" },
+  { name: "AIR Kochi", state: "Kerala", lang: "Malayalam", url: "https://d3hrxqn1tritdh.cloudfront.net/70400e7510e87cdf/70400e7510e87cdf.m3u8" },
+  { name: "Rainbow Kochi", state: "Kerala", lang: "Malayalam", url: "https://d1cvqgmbcpg5yn.cloudfront.net/7df6f2a8c3c4d33b/7df6f2a8c3c4d33b.m3u8" },
+  { name: "VB Ananthapuri", state: "Kerala", lang: "Malayalam", url: "https://d3hrxqn1tritdh.cloudfront.net/ad3a8436a329e2d6/ad3a8436a329e2d6.m3u8" },
+  { name: "AIR Kannur", state: "Kerala", lang: "Malayalam", url: "https://d3hrxqn1tritdh.cloudfront.net/b82c91a395fc4a7d/b82c91a395fc4a7d.m3u8" },
+  { name: "AIR Devikulam", state: "Kerala", lang: "Malayalam", url: "https://d1tmej9eu7kw5c.cloudfront.net/e97acc829da9bf2a/e97acc829da9bf2a.m3u8" },
+  { name: "AIR Kerala", state: "Kerala", lang: "Malayalam", url: "https://d1cvqgmbcpg5yn.cloudfront.net/6ff13de7ea9b53d7/6ff13de7ea9b53d7.m3u8" }
+];
+
+const CATALOG_URL = "https://raw.githubusercontent.com/sureshmagnolia/ESP32-SI4732-Radio/main/stations.json";
+let deviceFavorites = [...STARTER_STATIONS];
+let onlineCatalog = [];
+let activePill = "ALL";
+let tTimer = null;
+
+function showToast(m){
+  let e=document.getElementById('toast');
+  e.innerText=m;
+  e.style.display='block';
+  if(tTimer)clearTimeout(tTimer);
+  tTimer=setTimeout(()=>e.style.display='none',2600);
+}
+
+function sendCmd(a, msg){
+  if(msg) showToast(msg);
+  channel.postMessage({ type: 'CMD', action: a });
+  if (window.location.protocol.startsWith('http')) {
+    fetch('/api/cmd?action=' + encodeURIComponent(a)).catch(()=>{});
+  }
+}
+
+function sendVol(v){
+  document.getElementById('v_val').innerText = Math.round((v/21)*100)+'%';
+  channel.postMessage({ type: 'VOL', val: parseInt(v, 10) });
+  if (window.location.protocol.startsWith('http')) {
+    fetch('/api/cmd?action=vol&val=' + encodeURIComponent(v)).catch(()=>{});
+  }
+}
+
+function sendLedConfig(){
+  let m = document.getElementById('led_mode').value;
+  let b = document.getElementById('led_bright').value;
+  document.getElementById('led_bval').innerText = b + '%';
+  channel.postMessage({ type: 'LED', mode: parseInt(m, 10), bright: parseInt(b, 10) });
+  if (window.location.protocol.startsWith('http')) {
+    fetch('/api/led', { method: 'POST', body: JSON.stringify({ mode: parseInt(m, 10), bright: parseInt(b, 10) }) }).catch(()=>{});
+  }
+}
+
+function saveTimer(){
+  let val=document.getElementById('tm_val').value;
+  let en=document.getElementById('tm_en').checked;
+  let dur=document.getElementById('tm_dur').value;
+  showToast('Alarm & Timer saved!');
+  channel.postMessage({ type: 'TIMER', val, en, dur });
+}
+
+function playFav(idx){
+  showToast('Tuning to CH ' + String(idx + 1).padStart(2, '0') + '...');
+  channel.postMessage({ type: 'PLAY_IDX', idx });
+  if (window.location.protocol.startsWith('http')) {
+    fetch('/api/play?id=' + encodeURIComponent(idx)).catch(()=>{});
+  }
+}
+
+function deleteFav(idx, name){
+  if(!confirm('Remove "' + name + '" from radio favorites?')) return;
+  showToast('Removing ' + name + '...');
+  channel.postMessage({ type: 'DEL_FAV', idx });
+}
+
+function submitCustomStation(){
+  let name = document.getElementById('cs_name').value.trim();
+  let url = document.getElementById('cs_url').value.trim();
+  let state = document.getElementById('cs_state').value.trim();
+  let lang = document.getElementById('cs_lang').value.trim();
+  let playNow = document.getElementById('cs_play_now').checked;
+  if(!name || !url){
+    showToast('Name and URL required');
+    return;
+  }
+  showToast('Adding ' + name + '...');
+  channel.postMessage({ type: 'ADD_FAV', name, url, state, lang, playNow });
+  if (window.location.protocol.startsWith('http')) {
+    fetch('/api/favorites', { method: 'POST', body: JSON.stringify({ name, url, state, lang }) }).catch(()=>{});
+  }
+  document.getElementById('cs_name').value = '';
+  document.getElementById('cs_url').value = '';
+}
+
+function saveWifi(){
+  let ssid = document.getElementById('wf_ssid').value.trim();
+  if(!ssid){
+    showToast('Please enter WiFi SSID');
+    return;
+  }
+  showToast('Connecting to ' + ssid + '...');
+  channel.postMessage({ type: 'WIFI', ssid });
+}
+
+function syncStatus(){
+  channel.postMessage({ type: 'REQUEST_SYNC' });
+  if (window.location.protocol.startsWith('http')) {
+    fetch('/api/status').then(r=>r.json()).then(d=>{
+      if (d) {
+        channel.onmessage({ data: { type: 'STATE_UPDATE', ...d } });
+      }
+    }).catch(()=>{});
+  }
+}
+
+// Receive State Updates from Physical Simulator in Real Time
+channel.onmessage = (e) => {
+  const d = e.data;
+  if (!d) return;
+
+  if (d.type === 'STATE_UPDATE') {
+    if (d.isPoweredOn === false) {
+      let b = document.getElementById('t_badge');
+      b.innerText = '[ REBOOTING ]';
+      b.className = 'badge badge-pause';
+      let bp = document.getElementById('b_play');
+      bp.innerText = '▶ Play';
+      bp.className = 'btn';
+      return;
+    }
+
+    if (d.title) document.getElementById('t_name').innerText = d.title;
+    if (d.meta) document.getElementById('t_meta').innerText = d.meta;
+
+    let b = document.getElementById('t_badge');
+    if (d.buffering) {
+      b.innerText = '[ BUFFERING ]';
+      b.className = 'badge badge-buf';
+    } else if (d.playing) {
+      b.innerText = '[ LIVE ]';
+      b.className = 'badge badge-live';
+    } else {
+      b.innerText = '[ PAUSED ]';
+      b.className = 'badge badge-pause';
+    }
+
+    let bp = document.getElementById('b_play');
+    bp.innerText = d.playing ? '⏸ Pause' : '▶ Play';
+    bp.className = d.playing ? 'btn btn-blue' : 'btn';
+
+    if (d.vol !== undefined) {
+      document.getElementById('v_slider').value = d.vol;
+      document.getElementById('v_val').innerText = d.muted ? 'MUTED' : (Math.round((d.vol/21)*100) + '%');
+    }
+    if (d.muted !== undefined) {
+      document.getElementById('b_mute').innerText = d.muted ? '🔇 Unmute' : '🔊 Mute';
+    }
+    if (d.ledMode !== undefined) {
+      document.getElementById('led_mode').value = String(d.ledMode);
+    }
+    if (d.ledBright !== undefined) {
+      document.getElementById('led_bright').value = d.ledBright;
+      document.getElementById('led_bval').innerText = d.ledBright + '%';
+    }
+    if (d.favorites) {
+      deviceFavorites = d.favorites;
+      renderFavorites();
+      renderCatalog();
+    }
+  }
+};
+
+/* =========================================================================
+ * UI Helpers & Online Catalog
+ * ========================================================================= */
+function renderFavorites(){
+  let tb = document.getElementById('favTableBody');
+  document.getElementById('favCount').innerText = deviceFavorites.length;
+  if(!deviceFavorites || deviceFavorites.length === 0){
+    tb.innerHTML = '<tr><td colspan="4" style="text-align:center;color:#8b949e;padding:16px;">No favorites saved yet. Add from catalog below!</td></tr>';
+    return;
+  }
+  let h = '';
+  deviceFavorites.forEach((st, idx) => {
+    let chStr = 'CH ' + String(idx + 1).padStart(2, '0');
+    h += '<tr>';
+    h += '<td><span class="badge-ch">' + chStr + '</span></td>';
+    h += '<td><div style="font-weight:600;color:#f0f6fc;">' + escapeHtml(st.name) + '</div><div style="font-size:11px;color:#8b949e;">' + escapeHtml(st.state || '') + '</div></td>';
+    h += '<td><span class="badge-lang">' + escapeHtml(st.lang || 'Radio') + '</span></td>';
+    h += '<td style="text-align:right;white-space:nowrap;">';
+    h += '<button type="button" class="btn-play" onclick="playFav(' + idx + ')">▶</button> ';
+    h += '<button type="button" class="btn-del" onclick="deleteFav(' + idx + ', \'' + escapeJs(st.name) + '\')">🗑</button>';
+    h += '</td>';
+    h += '</tr>';
+  });
+  tb.innerHTML = h;
+}
+
+function loadOnlineCatalog(){
+  fetch(CATALOG_URL)
+    .then(r => r.json())
+    .then(d => {
+      onlineCatalog = Array.isArray(d) ? d : (d.stations || []);
+      renderCatalog();
+    }).catch(() => {
+      // Fallback
+      onlineCatalog = [
+        { name: "Akashvani Thrissur", state: "Kerala", lang: "Malayalam", url: "https://radio.wavespb.com/live/f70fdeca437dc326/f70fdeca437dc326.m3u8" },
+        { name: "FM Rainbow Kochi", state: "Kerala", lang: "Malayalam", url: "https://radio.wavespb.com/live/7df6f2a8c3c4d33b/7df6f2a8c3c4d33b.m3u8" },
+        { name: "Vividh Bharati", state: "National", lang: "Hindi", url: "https://radio.wavespb.com/live/146ed6ec6dea5a24/146ed6ec6dea5a24.m3u8" },
+        { name: "VB Malayalam", state: "Kerala", lang: "Malayalam", url: "https://radio.wavespb.com/live/ad3a8436a329e2d6/ad3a8436a329e2d6.m3u8" },
+        { name: "FM Gold Delhi", state: "Delhi", lang: "Hindi", url: "https://airhlspush.pc.cdn.bitgravity.com/httppush/hlspbaudio005/hlspbaudio005_Auto.m3u8" }
+      ];
+      renderCatalog();
+    });
+}
+
+function isStationFavorited(url){
+  return deviceFavorites.some(f => f.url && f.url.toLowerCase() === url.toLowerCase());
+}
+
+function selectPill(elem, lang){
+  document.querySelectorAll('.pill').forEach(p => p.classList.remove('active'));
+  elem.classList.add('active');
+  activePill = lang;
+  renderCatalog();
+}
+
+function filterCatalog(){
+  renderCatalog();
+}
+
+function renderCatalog(){
+  let c = document.getElementById('catContainer');
+  if(!onlineCatalog || onlineCatalog.length === 0) return;
+  let q = document.getElementById('catSearch').value.toLowerCase().trim();
+
+  let filtered = onlineCatalog.filter(st => {
+    if(activePill !== 'ALL' && (!st.lang || st.lang.toLowerCase() !== activePill.toLowerCase())) return false;
+    if(!q) return true;
+    return (st.name && st.name.toLowerCase().includes(q)) ||
+           (st.state && st.state.toLowerCase().includes(q)) ||
+           (st.lang && st.lang.toLowerCase().includes(q));
+  });
+
+  if(filtered.length === 0){
+    c.innerHTML = '<div style="padding:20px;text-align:center;color:#8b949e;">No stations match search filter.</div>';
+    return;
+  }
+
+  let h = '';
+  filtered.slice(0, 60).forEach(st => {
+    let faved = isStationFavorited(st.url);
+    h += '<div class="cat-item">';
+    h += '<div class="cat-info">';
+    h += '<div class="cat-name">' + escapeHtml(st.name) + '</div>';
+    h += '<div class="cat-meta"><span class="badge-lang">' + escapeHtml(st.lang || 'Radio') + '</span> ' + escapeHtml(st.state || '') + '</div>';
+    h += '</div>';
+    h += '<div>';
+    if(faved){
+      h += '<button type="button" class="btn-saved">✓ Saved</button>';
+    } else {
+      h += '<button type="button" class="btn-add" onclick="addFromCatalog(\'' + escapeJs(st.name) + '\',\'' + escapeJs(st.url) + '\',\'' + escapeJs(st.state||'') + '\',\'' + escapeJs(st.lang||'') + '\')">⭐ Add</button>';
+    }
+    h += '</div>';
+    h += '</div>';
+  });
+  c.innerHTML = h;
+}
+
+function addFromCatalog(name, url, state, lang){
+  showToast('Adding ' + name + '...');
+  channel.postMessage({ type: 'ADD_FAV', name, url, state, lang, playNow: false });
+}
+
+function escapeHtml(s){
+  if(!s) return '';
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function escapeJs(s){
+  if(!s) return '';
+  return s.replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/"/g,'\\"');
+}
+
+window.addEventListener('DOMContentLoaded', () => {
+  renderFavorites();
+  loadOnlineCatalog();
+  syncStatus();
+});
+</script>
+
+</body>
+</html>
