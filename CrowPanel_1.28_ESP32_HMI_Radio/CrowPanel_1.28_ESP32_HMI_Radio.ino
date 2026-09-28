@@ -2064,154 +2064,134 @@ void enterPowerOffMode() {
 }
 
 void runStandbySleepLoop(bool isColdBoot) {
-    // 8. Configure GPIO 41 as wake-up source from Light Sleep
-    gpio_wakeup_enable((gpio_num_t)ENCODER_SW_PIN, GPIO_INTR_LOW_LEVEL);
-    esp_sleep_enable_gpio_wakeup();
-
-    // Enable rails, turn off backlight and green power LED
-    digitalWrite(PIN_PWR_EN1, HIGH);
-    digitalWrite(PIN_PWR_EN2, HIGH);
+    // 1. Keep hardware rails, backlight, screen, and green power LED OFF
+    pinMode(PIN_PWR_LED, OUTPUT);
     digitalWrite(PIN_PWR_LED, LOW); // Green power LED OFF
-    ledcWrite(LCD_BL_PIN, 0);       // Backlight OFF
+    pinMode(PIN_PWR_EN1, OUTPUT);
+    digitalWrite(PIN_PWR_EN1, HIGH); // Power rail for NeoPixel control
+    pinMode(PIN_PWR_EN2, OUTPUT);
+    digitalWrite(PIN_PWR_EN2, HIGH);
 
-    // Keep NeoPixel ring LEDs completely OFF during standby (only board red power LED stays on)
+    pinMode(LCD_BL_PIN, OUTPUT);
+    digitalWrite(LCD_BL_PIN, LOW); // Backlight OFF
+    gfx.sleep();
+
+    // 2. Shut off NeoPixel ring LEDs
     strip.begin();
     strip.clear();
     strip.show();
 
-    Serial.println("[POWER] Device is in STANDBY MODE. Ring LEDs OFF, Board Power LED RED. Hold dial 4s to Power ON.");
+    // 3. Configure Rotary Center Switch
+    pinMode(ENCODER_SW_PIN, INPUT_PULLUP);
 
-    // 9. Low-Power Standby Sleep Loop
+    Serial.println("\n========================================================");
+    Serial.println("  [STANDBY] Radio is in STANDBY MODE.");
+    Serial.println("  [STANDBY] Screen OFF, Audio OFF, Ring LEDs OFF, Board Red LED ON.");
+    Serial.println("  [STANDBY] Press and hold rotary dial for 4s to Turn ON.");
+    Serial.println("========================================================\n");
+
+    // 4. Standby Loop
     while (true) {
-        // Arm RTC timer wake-up if Auto-On Alarm is enabled and NTP time is valid
+        // Check Auto-On Alarm
         if (timerEnabled) {
             time_t nowSec = time(nullptr);
             if (nowSec > 100000) {
                 struct tm t;
                 localtime_r(&nowSec, &t);
-                struct tm target = t;
-                target.tm_hour = timerHour;
-                target.tm_min = timerMin;
-                target.tm_sec = 0;
-                time_t targetSec = mktime(&target);
-                if (targetSec <= nowSec) {
-                    targetSec += 86400; // Schedule for next day
-                }
-                uint64_t diffSec = (uint64_t)(targetSec - nowSec);
-                if (diffSec < 5) diffSec = 86400; // Safety floor
-                esp_sleep_enable_timer_wakeup(diffSec * 1000000ULL);
-                Serial.printf("[POWER] Auto-On Alarm armed for %02d:%02d IST (waking in %llu sec / %llu min)\n",
-                              timerHour, timerMin, diffSec, diffSec / 60);
-            }
-        }
-
-        // Configure GPIO 41 as wake-up source
-        gpio_wakeup_enable((gpio_num_t)ENCODER_SW_PIN, GPIO_INTR_LOW_LEVEL);
-        esp_sleep_enable_gpio_wakeup();
-
-        Serial.println("[POWER] Entering light sleep...");
-        Serial.flush();
-        esp_light_sleep_start();
-
-        esp_sleep_wakeup_cause_t wakeupCause = esp_sleep_get_wakeup_cause();
-
-        // CASE A: Woken by RTC Auto-On Alarm Timer!
-        if (wakeupCause == ESP_SLEEP_WAKEUP_TIMER) {
-            Serial.println("\n[ALARM] >>> Woke up from Standby Sleep by Auto-On Alarm Timer! <<<");
-            bootFromAlarm = true;
-            prefs.begin("crow_timer", false);
-            prefs.putBool("alarm_boot", true);
-            prefs.end();
-
-            prefs.begin("crow_pwr", false);
-            prefs.putBool("wake_boot", true);
-            prefs.end();
-
-            digitalWrite(PIN_PWR_EN1, HIGH);
-            digitalWrite(PIN_PWR_EN2, HIGH);
-            digitalWrite(PIN_PWR_LED, HIGH);
-
-            ESP.restart(); // Clean boot into auto-play
-        }
-
-        // CASE B: Woken by Dial Switch (GPIO 41 pressed)
-        unsigned long wakePressStart = millis();
-        bool powerOnConfirmed = false;
-
-        // Re-initialize NeoPixels and power rails after light-sleep wake
-        digitalWrite(PIN_PWR_EN1, HIGH);
-        digitalWrite(PIN_PWR_EN2, HIGH);
-        strip.begin();
-        strip.setBrightness(180);
-
-        // Monitor whether the user holds the dial for 4 seconds to turn ON
-        int spinStep = 0;
-        while (digitalRead(ENCODER_SW_PIN) == LOW) {
-            delay(40);
-            unsigned long held = millis() - wakePressStart;
-
-            strip.clear();
-            // Clockwise spinning chase head around the 5 LEDs:
-            int spinLed = (NEOPIXEL_COUNT - 1) - (spinStep % NEOPIXEL_COUNT);
-            spinStep++;
-
-            // Progressive hold fill in clockwise direction (0 to 5 LEDs over 4000ms)
-            int activeLeds = (int)((held * (NEOPIXEL_COUNT + 1)) / 4000);
-            if (activeLeds > NEOPIXEL_COUNT) activeLeds = NEOPIXEL_COUNT;
-
-            // Fill latched LEDs in clockwise order (from 4 down to 0)
-            for (int i = 0; i < NEOPIXEL_COUNT; i++) {
-                int ledIdx = (NEOPIXEL_COUNT - 1) - i;
-                if (i < activeLeds) {
-                    strip.setPixelColor(ledIdx, strip.Color(0, 180, 50)); // Bright steady emerald green fill
+                if (t.tm_hour == timerHour && t.tm_min == timerMin && t.tm_sec < 5) {
+                    Serial.println("\n[ALARM] >>> Auto-On Alarm Triggered! Powering ON... <<<");
+                    bootFromAlarm = true;
+                    if (isColdBoot) return;
+                    else {
+                        prefs.begin("crow_pwr", false);
+                        prefs.putBool("wake_boot", true);
+                        prefs.end();
+                        delay(100);
+                        ESP.restart();
+                    }
                 }
             }
-            // Highlight the active rotating chase head
-            strip.setPixelColor(spinLed, strip.Color(30, 255, 90));
-            strip.show();
-
-            if (held >= 4000) {
-                powerOnConfirmed = true;
-                break;
-            }
         }
 
-        if (powerOnConfirmed) {
-            // Spectacular double emerald confirmation flash
-            for (int f = 0; f < 2; f++) {
+        // Check if Rotary Dial Push Switch is pressed (Active LOW)
+        if (digitalRead(ENCODER_SW_PIN) == LOW) {
+            unsigned long pressStart = millis();
+            bool powerOnConfirmed = false;
+            int spinStep = 0;
+
+            strip.setBrightness(220); // Bright, vivid emerald green
+            Serial.println("[POWER] Rotary push button pressed -> Monitoring 4s hold...");
+
+            while (digitalRead(ENCODER_SW_PIN) == LOW) {
+                unsigned long held = millis() - pressStart;
+
+                strip.clear();
+                // Clockwise spinning chase head around the 5 LEDs (4 -> 3 -> 2 -> 1 -> 0):
+                int spinLed = (NEOPIXEL_COUNT - 1) - (spinStep % NEOPIXEL_COUNT);
+                spinStep++;
+
+                // Progressive hold fill in clockwise direction (0 to 5 LEDs over 4000ms)
+                int activeLeds = (int)((held * (NEOPIXEL_COUNT + 1)) / 4000);
+                if (activeLeds > NEOPIXEL_COUNT) activeLeds = NEOPIXEL_COUNT;
+
+                // Fill latched LEDs in clockwise order (from 4 down to 0)
                 for (int i = 0; i < NEOPIXEL_COUNT; i++) {
-                    strip.setPixelColor(i, strip.Color(0, 255, 60));
+                    int ledIdx = (NEOPIXEL_COUNT - 1) - i;
+                    if (i < activeLeds) {
+                        strip.setPixelColor(ledIdx, strip.Color(0, 200, 40)); // Solid bright emerald green
+                    }
                 }
+                // Highlight the active rotating chase head
+                strip.setPixelColor(spinLed, strip.Color(40, 255, 80));
                 strip.show();
-                delay(180);
+
+                if (held >= 4000) {
+                    powerOnConfirmed = true;
+                    break;
+                }
+                delay(35);
+            }
+
+            if (powerOnConfirmed) {
+                Serial.println("[POWER] 4s hold verified! Double emerald flash confirmation...");
+                // Double emerald green confirmation flash
+                for (int f = 0; f < 2; f++) {
+                    for (int i = 0; i < NEOPIXEL_COUNT; i++) {
+                        strip.setPixelColor(i, strip.Color(0, 255, 60));
+                    }
+                    strip.show();
+                    delay(180);
+                    strip.clear();
+                    strip.show();
+                    delay(100);
+                }
+
+                // Wait for switch release before booting
+                while (digitalRead(ENCODER_SW_PIN) == LOW) {
+                    delay(20);
+                }
+                delay(100);
+
+                if (isColdBoot) {
+                    Serial.println("[POWER] Power-ON confirmed! Resuming setup directly...");
+                    return; // Directly continues setup() to turn ON rails, backlight, loader and radio!
+                } else {
+                    Serial.println("[POWER] Power-ON confirmed! Clean rebooting into active radio...");
+                    prefs.begin("crow_pwr", false);
+                    prefs.putBool("wake_boot", true);
+                    prefs.end();
+                    delay(100);
+                    ESP.restart();
+                }
+            } else {
+                // Button released early (< 4 seconds) -> cancel, turn ring LEDs completely OFF
                 strip.clear();
                 strip.show();
                 delay(100);
             }
-
-            // Wait for switch release before proceeding
-            while (digitalRead(ENCODER_SW_PIN) == LOW) {
-                delay(20);
-            }
-            delay(100);
-
-            if (isColdBoot) {
-                Serial.println("[POWER] Power-ON 4s hold verified! Resuming setup directly...");
-                return; // Return directly into setup() so it initializes and runs immediately!
-            } else {
-                Serial.println("[POWER] Power-ON 4s hold verified! Clean rebooting into active mode...");
-                prefs.begin("crow_pwr", false);
-                prefs.putBool("wake_boot", true);
-                prefs.end();
-                delay(100);
-                ESP.restart();
-            }
-        } else {
-            // Released early (< 4 seconds) -> ensure ring LEDs remain OFF and return to sleep
-            strip.clear();
-            strip.show();
-            delay(100);
         }
+
+        delay(30); // Low-overhead non-blocking poll
     }
 }
 
