@@ -179,6 +179,7 @@ static bool alarmActivePlaying = false;
 static unsigned long alarmAutoOffExpiryMs = 0;
 static int lastCheckedDay = -1;
 RTC_DATA_ATTR static bool bootFromAlarm = false;
+RTC_DATA_ATTR static bool powerOnByButton = false;
 
 // WiFi & AP State
 static String wifiSsid = "";
@@ -518,6 +519,7 @@ void createPowerOffOverlay();
 void showPowerOffOverlay(unsigned long heldMs);
 void hidePowerOffOverlay();
 void enterPowerOffMode();
+void runStandbySleepLoop();
 void loadTimerSettings();
 void saveTimerSettings();
 
@@ -2059,11 +2061,15 @@ void enterPowerOffMode() {
     }
     delay(200); // Debounce physical switch release
 
+    runStandbySleepLoop();
+}
+
+void runStandbySleepLoop() {
     // 8. Configure GPIO 41 as wake-up source from Light Sleep
     gpio_wakeup_enable((gpio_num_t)ENCODER_SW_PIN, GPIO_INTR_LOW_LEVEL);
     esp_sleep_enable_gpio_wakeup();
 
-    Serial.println("[POWER] Device is OFF (Standby Sleep). Hold dial 4s to Power ON.");
+    Serial.println("[POWER] Device is in STANDBY. Hold dial 4s to Power ON.");
 
     // 9. Low-Power Standby Sleep Loop
     while (true) {
@@ -2103,6 +2109,7 @@ void enterPowerOffMode() {
         if (wakeupCause == ESP_SLEEP_WAKEUP_TIMER) {
             Serial.println("\n[ALARM] >>> Woke up from Standby Sleep by Auto-On Alarm Timer! <<<");
             bootFromAlarm = true;
+            powerOnByButton = true;
             prefs.begin("crow_timer", false);
             prefs.putBool("alarm_boot", true);
             prefs.end();
@@ -2121,6 +2128,7 @@ void enterPowerOffMode() {
         // Temporarily power rail for NeoPixels indicator
         digitalWrite(PIN_PWR_EN1, HIGH);
         digitalWrite(PIN_PWR_EN2, HIGH);
+        strip.setBrightness(120);
 
         // Monitor whether the user holds the dial for 4 seconds to turn ON
         int spinStep = 0;
@@ -2163,7 +2171,7 @@ void enterPowerOffMode() {
                 strip.setPixelColor(i, strip.Color(0, 255, 50));
             }
             strip.show();
-            delay(350);
+            delay(400);
             strip.clear();
             strip.show();
 
@@ -2174,6 +2182,7 @@ void enterPowerOffMode() {
             delay(150);
 
             Serial.println("[POWER] Power-ON 4s hold verified! Initiating Clean Boot...");
+            powerOnByButton = true;
             ESP.restart(); // Clean Boot: Edifier Splash Screen, Wi-Fi reconnect, auto-play
         } else {
             // Released early (< 4 seconds) -> cancel, turn off rails/LEDs, and return to sleep
@@ -3471,7 +3480,65 @@ void renderProfessionalLoaderFrame(int progress, const char* titleMsg, const cha
  * ------------------------------------------------------------------------- */
 void setup() {
     Serial.begin(115200);
-    delay(200);
+    delay(100);
+
+    esp_reset_reason_t rstReason = esp_reset_reason();
+    if (rstReason == ESP_RST_POWERON || rstReason == ESP_RST_BROWNOUT) {
+        powerOnByButton = false;
+    }
+
+    // Check if this boot is from an Auto-On Alarm
+    prefs.begin("crow_timer", false);
+    bool alarmBootFlag = prefs.getBool("alarm_boot", false);
+    if (alarmBootFlag) {
+        bootFromAlarm = true;
+        prefs.putBool("alarm_boot", false);
+    }
+    prefs.end();
+
+    // If power was just applied (cold boot) AND not triggered by 4-second button hold or alarm:
+    if (!powerOnByButton && !bootFromAlarm) {
+        Serial.println("\n========================================================");
+        Serial.println("  EDIFIER 1.28\" ESP32-S3 HMI Studio Radio");
+        Serial.println("  [STANDBY] Cold Power-ON detected -> Starting in STANDBY.");
+        Serial.println("  [STANDBY] Hold knob push-button for 4s to power ON.");
+        Serial.println("========================================================\n");
+
+        // Keep hardware rails, display, backlight, and LEDs powered OFF
+        pinMode(PIN_PWR_LED, OUTPUT);
+        digitalWrite(PIN_PWR_LED, LOW);
+        pinMode(PIN_PWR_EN1, OUTPUT);
+        digitalWrite(PIN_PWR_EN1, LOW);
+        pinMode(PIN_PWR_EN2, OUTPUT);
+        digitalWrite(PIN_PWR_EN2, LOW);
+
+        pinMode(LCD_BL_PIN, OUTPUT);
+        digitalWrite(LCD_BL_PIN, LOW);
+
+        pinMode(ENCODER_SW_PIN, INPUT_PULLUP);
+
+        // Load persistent Auto-On Alarm settings (so alarm can wake device if scheduled)
+        loadTimerSettings();
+
+        // Initialize NeoPixels for power-on feedback
+        strip.begin();
+        strip.setBrightness(120);
+        strip.clear();
+        strip.show();
+
+        // Wait for switch release if button was held during power insertion
+        while (digitalRead(ENCODER_SW_PIN) == LOW) {
+            delay(30);
+        }
+        delay(100);
+
+        // Enter low-power Standby Sleep Loop!
+        runStandbySleepLoop();
+        return; // Never returns; runStandbySleepLoop restarts ESP on 4s hold
+    }
+
+    powerOnByButton = false; // Reset for next power cycle
+
     Serial.println("\n\n========================================================");
     Serial.println("  EDIFIER 1.28\" ESP32-S3 HMI Studio Radio Starting... ");
     Serial.println("  A Passion for Sound | Malayalam Air Edition");
