@@ -30,5 +30,15 @@ M5Core2_AIR_Radio/
 history_and_logs/
 ESP32S3_JC3248W535_Radio_PrePauseFix_Backup/
 CrowPanel_1.28_ESP32_HMI/
+3D_Enclosure_JC3248W535/
+3D_Enclosure_JC3248W535_3InchSpeaker/
+3D_Enclosure_Waveshare28/
+ESP32S3_JC3248W535_Radio_AllIsWell/
+ESP32S3_Waveshare28_Radio/
+Laser_Cuts/
+DisplaylessHack/
+HeadlessBoard/
+Headless_Radio_Addon/
+PROJECT_CHAT_HISTORY.md
 __pycache__/
 *.pyc

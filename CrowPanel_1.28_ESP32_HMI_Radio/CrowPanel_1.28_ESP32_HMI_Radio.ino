@@ -179,7 +179,6 @@ static bool alarmActivePlaying = false;
 static unsigned long alarmAutoOffExpiryMs = 0;
 static int lastCheckedDay = -1;
 RTC_DATA_ATTR static bool bootFromAlarm = false;
-RTC_DATA_ATTR static bool powerOnByButton = false;
 
 // WiFi & AP State
 static String wifiSsid = "";
@@ -519,7 +518,7 @@ void createPowerOffOverlay();
 void showPowerOffOverlay(unsigned long heldMs);
 void hidePowerOffOverlay();
 void enterPowerOffMode();
-void runStandbySleepLoop();
+void runStandbySleepLoop(bool isColdBoot = false);
 void loadTimerSettings();
 void saveTimerSettings();
 
@@ -2061,15 +2060,26 @@ void enterPowerOffMode() {
     }
     delay(200); // Debounce physical switch release
 
-    runStandbySleepLoop();
+    runStandbySleepLoop(false);
 }
 
-void runStandbySleepLoop() {
+void runStandbySleepLoop(bool isColdBoot) {
     // 8. Configure GPIO 41 as wake-up source from Light Sleep
     gpio_wakeup_enable((gpio_num_t)ENCODER_SW_PIN, GPIO_INTR_LOW_LEVEL);
     esp_sleep_enable_gpio_wakeup();
 
-    Serial.println("[POWER] Device is in STANDBY. Hold dial 4s to Power ON.");
+    // Enable rails, turn off backlight and green power LED
+    digitalWrite(PIN_PWR_EN1, HIGH);
+    digitalWrite(PIN_PWR_EN2, HIGH);
+    digitalWrite(PIN_PWR_LED, LOW); // Green power LED OFF
+    ledcWrite(LCD_BL_PIN, 0);       // Backlight OFF
+
+    // Keep NeoPixel ring LEDs completely OFF during standby (only board red power LED stays on)
+    strip.begin();
+    strip.clear();
+    strip.show();
+
+    Serial.println("[POWER] Device is in STANDBY MODE. Ring LEDs OFF, Board Power LED RED. Hold dial 4s to Power ON.");
 
     // 9. Low-Power Standby Sleep Loop
     while (true) {
@@ -2109,9 +2119,12 @@ void runStandbySleepLoop() {
         if (wakeupCause == ESP_SLEEP_WAKEUP_TIMER) {
             Serial.println("\n[ALARM] >>> Woke up from Standby Sleep by Auto-On Alarm Timer! <<<");
             bootFromAlarm = true;
-            powerOnByButton = true;
             prefs.begin("crow_timer", false);
             prefs.putBool("alarm_boot", true);
+            prefs.end();
+
+            prefs.begin("crow_pwr", false);
+            prefs.putBool("wake_boot", true);
             prefs.end();
 
             digitalWrite(PIN_PWR_EN1, HIGH);
@@ -2125,39 +2138,37 @@ void runStandbySleepLoop() {
         unsigned long wakePressStart = millis();
         bool powerOnConfirmed = false;
 
-        // Temporarily power rail for NeoPixels indicator
+        // Re-initialize NeoPixels and power rails after light-sleep wake
         digitalWrite(PIN_PWR_EN1, HIGH);
         digitalWrite(PIN_PWR_EN2, HIGH);
-        strip.setBrightness(120);
+        strip.begin();
+        strip.setBrightness(180);
 
         // Monitor whether the user holds the dial for 4 seconds to turn ON
         int spinStep = 0;
         while (digitalRead(ENCODER_SW_PIN) == LOW) {
-            delay(50);
+            delay(40);
             unsigned long held = millis() - wakePressStart;
 
-            // Visual feedback: Rotating green LED indicator in clockwise direction (same as volume dial)
-            if (held >= 400) {
-                strip.clear();
-                // Clockwise spinning step around the 5 LEDs (decreasing index: 4 -> 3 -> 2 -> 1 -> 0):
-                int spinLed = (NEOPIXEL_COUNT - 1) - (spinStep % NEOPIXEL_COUNT);
-                spinStep++;
+            strip.clear();
+            // Clockwise spinning chase head around the 5 LEDs:
+            int spinLed = (NEOPIXEL_COUNT - 1) - (spinStep % NEOPIXEL_COUNT);
+            spinStep++;
 
-                // Progressive hold fill in clockwise direction (0 to 5)
-                int activeLeds = (int)(((held - 400) * (NEOPIXEL_COUNT + 1)) / 3600);
-                if (activeLeds > NEOPIXEL_COUNT) activeLeds = NEOPIXEL_COUNT;
+            // Progressive hold fill in clockwise direction (0 to 5 LEDs over 4000ms)
+            int activeLeds = (int)((held * (NEOPIXEL_COUNT + 1)) / 4000);
+            if (activeLeds > NEOPIXEL_COUNT) activeLeds = NEOPIXEL_COUNT;
 
-                // Fill LEDs in clockwise order (from 4 down to 0)
-                for (int i = 0; i < NEOPIXEL_COUNT; i++) {
-                    int ledIdx = (NEOPIXEL_COUNT - 1) - i;
-                    if (i < activeLeds) {
-                        strip.setPixelColor(ledIdx, strip.Color(0, 160, 45)); // Steady green fill
-                    }
+            // Fill latched LEDs in clockwise order (from 4 down to 0)
+            for (int i = 0; i < NEOPIXEL_COUNT; i++) {
+                int ledIdx = (NEOPIXEL_COUNT - 1) - i;
+                if (i < activeLeds) {
+                    strip.setPixelColor(ledIdx, strip.Color(0, 180, 50)); // Bright steady emerald green fill
                 }
-                // Highlight the active rotating chase head with bright emerald
-                strip.setPixelColor(spinLed, strip.Color(40, 255, 80));
-                strip.show();
             }
+            // Highlight the active rotating chase head
+            strip.setPixelColor(spinLed, strip.Color(30, 255, 90));
+            strip.show();
 
             if (held >= 4000) {
                 powerOnConfirmed = true;
@@ -2166,30 +2177,39 @@ void runStandbySleepLoop() {
         }
 
         if (powerOnConfirmed) {
-            // Flash all NeoPixels emerald green for power-on confirmation
-            for (int i = 0; i < NEOPIXEL_COUNT; i++) {
-                strip.setPixelColor(i, strip.Color(0, 255, 50));
+            // Spectacular double emerald confirmation flash
+            for (int f = 0; f < 2; f++) {
+                for (int i = 0; i < NEOPIXEL_COUNT; i++) {
+                    strip.setPixelColor(i, strip.Color(0, 255, 60));
+                }
+                strip.show();
+                delay(180);
+                strip.clear();
+                strip.show();
+                delay(100);
             }
-            strip.show();
-            delay(400);
-            strip.clear();
-            strip.show();
 
-            // Wait for switch release before rebooting
+            // Wait for switch release before proceeding
             while (digitalRead(ENCODER_SW_PIN) == LOW) {
-                delay(30);
+                delay(20);
             }
-            delay(150);
+            delay(100);
 
-            Serial.println("[POWER] Power-ON 4s hold verified! Initiating Clean Boot...");
-            powerOnByButton = true;
-            ESP.restart(); // Clean Boot: Edifier Splash Screen, Wi-Fi reconnect, auto-play
+            if (isColdBoot) {
+                Serial.println("[POWER] Power-ON 4s hold verified! Resuming setup directly...");
+                return; // Return directly into setup() so it initializes and runs immediately!
+            } else {
+                Serial.println("[POWER] Power-ON 4s hold verified! Clean rebooting into active mode...");
+                prefs.begin("crow_pwr", false);
+                prefs.putBool("wake_boot", true);
+                prefs.end();
+                delay(100);
+                ESP.restart();
+            }
         } else {
-            // Released early (< 4 seconds) -> cancel, turn off rails/LEDs, and return to sleep
+            // Released early (< 4 seconds) -> ensure ring LEDs remain OFF and return to sleep
             strip.clear();
             strip.show();
-            digitalWrite(PIN_PWR_EN1, LOW);
-            digitalWrite(PIN_PWR_EN2, LOW);
             delay(100);
         }
     }
@@ -3482,10 +3502,6 @@ void setup() {
     Serial.begin(115200);
     delay(100);
 
-    esp_reset_reason_t rstReason = esp_reset_reason();
-    if (rstReason == ESP_RST_POWERON || rstReason == ESP_RST_BROWNOUT) {
-        powerOnByButton = false;
-    }
 
     // Check if this boot is from an Auto-On Alarm
     prefs.begin("crow_timer", false);
@@ -3496,21 +3512,30 @@ void setup() {
     }
     prefs.end();
 
-    // If power was just applied (cold boot) AND not triggered by 4-second button hold or alarm:
-    if (!powerOnByButton && !bootFromAlarm) {
+    // Check if this boot was explicitly triggered by user power-on wake
+    prefs.begin("crow_pwr", false);
+    bool wakeBoot = prefs.getBool("wake_boot", false);
+    if (wakeBoot) {
+        prefs.putBool("wake_boot", false);
+    }
+    prefs.end();
+
+    // If power was just applied (cold boot) AND not triggered by wake_boot or alarm:
+    if (!wakeBoot && !bootFromAlarm) {
         Serial.println("\n========================================================");
         Serial.println("  EDIFIER 1.28\" ESP32-S3 HMI Studio Radio");
         Serial.println("  [STANDBY] Cold Power-ON detected -> Starting in STANDBY.");
+        Serial.println("  [STANDBY] Ring LEDs OFF, Board Power LED RED.");
         Serial.println("  [STANDBY] Hold knob push-button for 4s to power ON.");
         Serial.println("========================================================\n");
 
-        // Keep hardware rails, display, backlight, and LEDs powered OFF
+        // Keep hardware rails, display, backlight, and green LED powered OFF
         pinMode(PIN_PWR_LED, OUTPUT);
         digitalWrite(PIN_PWR_LED, LOW);
         pinMode(PIN_PWR_EN1, OUTPUT);
-        digitalWrite(PIN_PWR_EN1, LOW);
+        digitalWrite(PIN_PWR_EN1, HIGH); // Power rail for NeoPixel control
         pinMode(PIN_PWR_EN2, OUTPUT);
-        digitalWrite(PIN_PWR_EN2, LOW);
+        digitalWrite(PIN_PWR_EN2, HIGH);
 
         pinMode(LCD_BL_PIN, OUTPUT);
         digitalWrite(LCD_BL_PIN, LOW);
@@ -3520,9 +3545,8 @@ void setup() {
         // Load persistent Auto-On Alarm settings (so alarm can wake device if scheduled)
         loadTimerSettings();
 
-        // Initialize NeoPixels for power-on feedback
+        // Ensure NeoPixels are completely OFF during standby (only board red power LED stays on)
         strip.begin();
-        strip.setBrightness(120);
         strip.clear();
         strip.show();
 
@@ -3533,11 +3557,9 @@ void setup() {
         delay(100);
 
         // Enter low-power Standby Sleep Loop!
-        runStandbySleepLoop();
-        return; // Never returns; runStandbySleepLoop restarts ESP on 4s hold
+        // When user holds knob button for 4s, runStandbySleepLoop returns directly!
+        runStandbySleepLoop(true);
     }
-
-    powerOnByButton = false; // Reset for next power cycle
 
     Serial.println("\n\n========================================================");
     Serial.println("  EDIFIER 1.28\" ESP32-S3 HMI Studio Radio Starting... ");
