@@ -42,3 +42,4 @@ Headless_Radio_Addon/
 PROJECT_CHAT_HISTORY.md
 __pycache__/
 *.pyc
+scratch/

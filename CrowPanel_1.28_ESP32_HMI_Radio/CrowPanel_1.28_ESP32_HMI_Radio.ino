@@ -2088,7 +2088,42 @@ void enterPowerOffMode() {
     }
     delay(200); // Debounce physical switch release
 
+    // Enter Standby Sleep Loop
     runStandbySleepLoop(false);
+
+    // --- WAKING UP FROM RUNTIME STANDBY ---
+    Serial.println("\n[POWER] Waking up from Standby Mode...");
+
+    // 1. Energize hardware power rails & green power LED
+    pinMode(PIN_PWR_EN1, OUTPUT);
+    digitalWrite(PIN_PWR_EN1, HIGH);
+    pinMode(PIN_PWR_EN2, OUTPUT);
+    digitalWrite(PIN_PWR_EN2, HIGH);
+    pinMode(PIN_PWR_LED, OUTPUT);
+    digitalWrite(PIN_PWR_LED, HIGH);
+
+    // 2. Wake up display & smooth fade in backlight
+    gfx.wakeup();
+    hidePowerOffOverlay();
+    lv_obj_invalidate(lv_scr_act());
+    lv_timer_handler();
+
+    for (int b = 0; b <= currentBacklightBrightness; b += 5) {
+        ledcWrite(LCD_BL_PIN, (b * 255) / 100);
+        delay(15);
+    }
+    ledcWrite(LCD_BL_PIN, (currentBacklightBrightness * 255) / 100);
+
+    // 3. Reconnect Wi-Fi
+    WiFi.mode(WIFI_AP_STA);
+    WiFi.softAP(AP_SSID, AP_PASS);
+    dnsServer.start(53, "*", WiFi.softAPIP());
+    if (wifiSsid.length() > 0) {
+        WiFi.begin(wifiSsid.c_str(), wifiPass.c_str());
+    }
+
+    // 4. Resume station playback
+    playCurrentStation();
 }
 
 void runStandbySleepLoop(bool isColdBoot) {
@@ -2129,14 +2164,7 @@ void runStandbySleepLoop(bool isColdBoot) {
                 if (t.tm_hour == timerHour && t.tm_min == timerMin && t.tm_sec < 5) {
                     Serial.println("\n[ALARM] >>> Auto-On Alarm Triggered! Powering ON... <<<");
                     bootFromAlarm = true;
-                    if (isColdBoot) return;
-                    else {
-                        prefs.begin("crow_pwr", false);
-                        prefs.putBool("wake_boot", true);
-                        prefs.end();
-                        delay(100);
-                        ESP.restart();
-                    }
+                    return;
                 }
             }
         }
@@ -2144,13 +2172,25 @@ void runStandbySleepLoop(bool isColdBoot) {
         // Check if Rotary Dial Push Switch is pressed (Active LOW)
         if (digitalRead(ENCODER_SW_PIN) == LOW) {
             unsigned long pressStart = millis();
+            unsigned long lastLowTime = millis();
+            const unsigned long DEBOUNCE_GRACE_MS = 60; // Tolerate mechanical contact bounce chatter!
             bool powerOnConfirmed = false;
             int spinStep = 0;
 
             strip.setBrightness(220); // Bright, vivid emerald green
             Serial.println("[POWER] Rotary push button pressed -> Monitoring 4s hold...");
 
-            while (digitalRead(ENCODER_SW_PIN) == LOW) {
+            while (true) {
+                if (digitalRead(ENCODER_SW_PIN) == LOW) {
+                    lastLowTime = millis(); // Refresh last confirmed low state
+                } else {
+                    // Momentary HIGH read: verify if it stays HIGH longer than debounce grace window
+                    if (millis() - lastLowTime > DEBOUNCE_GRACE_MS) {
+                        // User genuinely released the button
+                        break;
+                    }
+                }
+
                 unsigned long held = millis() - pressStart;
 
                 strip.clear();
@@ -2177,7 +2217,7 @@ void runStandbySleepLoop(bool isColdBoot) {
                     powerOnConfirmed = true;
                     break;
                 }
-                delay(35);
+                delay(30);
             }
 
             if (powerOnConfirmed) {
@@ -2194,23 +2234,14 @@ void runStandbySleepLoop(bool isColdBoot) {
                     delay(100);
                 }
 
-                // Wait for switch release before booting
+                // Wait for switch release before continuing
                 while (digitalRead(ENCODER_SW_PIN) == LOW) {
                     delay(20);
                 }
                 delay(100);
 
-                if (isColdBoot) {
-                    Serial.println("[POWER] Power-ON confirmed! Resuming setup directly...");
-                    return; // Directly continues setup() to turn ON rails, backlight, loader and radio!
-                } else {
-                    Serial.println("[POWER] Power-ON confirmed! Clean rebooting into active radio...");
-                    prefs.begin("crow_pwr", false);
-                    prefs.putBool("wake_boot", true);
-                    prefs.end();
-                    delay(100);
-                    ESP.restart();
-                }
+                Serial.println("[POWER] Power-ON confirmed! Proceeding to active operation...");
+                return; // Direct return! Works for both cold boot (setup resumes) and runtime standby!
             } else {
                 // Button released early (< 4 seconds) -> cancel, turn ring LEDs completely OFF
                 strip.clear();
@@ -3566,16 +3597,8 @@ void setup() {
     }
     prefs.end();
 
-    // Check if this boot was explicitly triggered by user power-on wake
-    prefs.begin("crow_pwr", false);
-    bool wakeBoot = prefs.getBool("wake_boot", false);
-    if (wakeBoot) {
-        prefs.putBool("wake_boot", false);
-    }
-    prefs.end();
-
-    // If power was just applied (cold boot) AND not triggered by wake_boot or alarm:
-    if (!wakeBoot && !bootFromAlarm) {
+    // If power was just applied (cold boot) AND not triggered by alarm:
+    if (!bootFromAlarm) {
         Serial.println("\n========================================================");
         Serial.println("  EDIFIER 1.28\" ESP32-S3 HMI Studio Radio");
         Serial.println("  [STANDBY] Cold Power-ON detected -> Starting in STANDBY.");
