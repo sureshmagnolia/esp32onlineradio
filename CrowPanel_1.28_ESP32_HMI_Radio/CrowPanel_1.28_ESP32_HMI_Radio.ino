@@ -147,6 +147,11 @@ static int currentVolume = 18;    // Range 0 to 21
 static bool isMuted = false;
 static int preMuteVolume = 18;
 
+// Stream URL & Status Error Tracking
+static bool isStreamError = false;
+static String streamErrorReason = "";
+static unsigned long streamErrorUntilMs = 0;
+
 // Knob Interaction Modes
 enum KnobMode {
     KNOB_MODE_TUNE,
@@ -213,6 +218,11 @@ static volatile uint32_t audioCurrentTime = 0;
 
 void sendAudioConnect(const char* url) {
     if (!audioCmdQueue || !url) return;
+    audioIsRunning = false;
+    audioSampleRate = 0;
+    audioBitRate = 0;
+    audioInBuffer = 0;
+    audioCurrentTime = 0;
     AudioCommand cmd;
     cmd.type = AUDIO_CMD_CONNECT;
     cmd.value = 0;
@@ -223,6 +233,11 @@ void sendAudioConnect(const char* url) {
 
 void sendAudioStop() {
     if (!audioCmdQueue) return;
+    audioIsRunning = false;
+    audioSampleRate = 0;
+    audioBitRate = 0;
+    audioInBuffer = 0;
+    audioCurrentTime = 0;
     AudioCommand cmd;
     cmd.type = AUDIO_CMD_STOP;
     cmd.value = 0;
@@ -255,9 +270,19 @@ static void audioTask(void *pvParameters) {
         while (audioCmdQueue && xQueueReceive(audioCmdQueue, &cmd, 0) == pdTRUE) {
             if (cmd.type == AUDIO_CMD_CONNECT) {
                 audio.stopSong();
+                audioIsRunning = false;
+                audioSampleRate = 0;
+                audioBitRate = 0;
+                audioInBuffer = 0;
+                audioCurrentTime = 0;
                 audio.connecttohost(cmd.url);
             } else if (cmd.type == AUDIO_CMD_STOP) {
                 audio.stopSong();
+                audioIsRunning = false;
+                audioSampleRate = 0;
+                audioBitRate = 0;
+                audioInBuffer = 0;
+                audioCurrentTime = 0;
             } else if (cmd.type == AUDIO_CMD_PAUSE_RESUME) {
                 audio.pauseResume();
             } else if (cmd.type == AUDIO_CMD_SET_VOLUME) {
@@ -266,10 +291,10 @@ static void audioTask(void *pvParameters) {
         }
         audio.loop();
         audioIsRunning = audio.isRunning();
-        audioSampleRate = audio.getSampleRate();
-        audioBitRate = audio.getBitRate();
+        audioSampleRate = audioIsRunning ? audio.getSampleRate() : 0;
+        audioBitRate = audioIsRunning ? audio.getBitRate() : 0;
         audioInBuffer = audio.inBufferFilled();
-        audioCurrentTime = audio.getAudioCurrentTime();
+        audioCurrentTime = audioIsRunning ? audio.getAudioCurrentTime() : 0;
         vTaskDelay(pdMS_TO_TICKS(1));
     }
 }
@@ -639,6 +664,9 @@ void prevStation() {
  * Dedicated Play/Pause Toggle
  * ------------------------------------------------------------------------- */
 void togglePlayPause() {
+    isStreamError = false;
+    streamErrorReason = "";
+    streamErrorUntilMs = 0;
     if (isPlaying) {
         sendAudioPauseResume();
         isPlaying = false;
@@ -2211,11 +2239,16 @@ void updateRadioUI() {
         lv_label_set_text(lblStationName, adHocStation.name.c_str());
     }
 
+    bool showError = (isStreamError && millis() < streamErrorUntilMs);
+
     // Top Badge: Channel & Status
     char bBuf[32];
-    if (isBuffering) {
+    if (showError) {
+        snprintf(bBuf, sizeof(bBuf), "! URL OFFLINE");
+        lv_obj_set_style_bg_color(lblBadgeTop, lv_color_hex(0xda3633), 0); // Warning red
+    } else if (isBuffering) {
         snprintf(bBuf, sizeof(bBuf), "[ BUFF... ]");
-        lv_obj_set_style_bg_color(lblBadgeTop, lv_color_hex(0xd29922), 0);
+        lv_obj_set_style_bg_color(lblBadgeTop, lv_color_hex(0xd29922), 0); // Golden yellow
     } else if (isPlaying) {
         if (isAdHocPlaying) {
             snprintf(bBuf, sizeof(bBuf), "ONLINE STREAM");
@@ -2231,12 +2264,18 @@ void updateRadioUI() {
     lv_label_set_text(lblBadgeTop, bBuf);
 
     // Subtitle Meta
-    String mStr = isAdHocPlaying ? adHocStation.language : runtimeStations[currentStationIndex].language;
-    String sStr = isAdHocPlaying ? adHocStation.state : runtimeStations[currentStationIndex].state;
-    if (sStr.length() > 0) {
-        mStr += " • " + sStr;
+    if (showError) {
+        lv_label_set_text(lblMeta, streamErrorReason.c_str());
+        lv_obj_set_style_text_color(lblMeta, lv_color_hex(0xf85149), 0); // High-contrast warning red
+    } else {
+        String mStr = isAdHocPlaying ? adHocStation.language : runtimeStations[currentStationIndex].language;
+        String sStr = isAdHocPlaying ? adHocStation.state : runtimeStations[currentStationIndex].state;
+        if (sStr.length() > 0) {
+            mStr += " • " + sStr;
+        }
+        lv_label_set_text(lblMeta, mStr.c_str());
+        lv_obj_set_style_text_color(lblMeta, lv_color_hex(0x8b949e), 0); // Classic silver/gray
     }
-    lv_label_set_text(lblMeta, mStr.c_str());
 
     // Volume Pill Indicator
     if (lblVolBadge) {
@@ -2263,7 +2302,11 @@ void updateRadioUI() {
 
     // Dedicated Play/Pause button styling
     if (btnPlayPause && lblPlayPauseIcon) {
-        if (isBuffering) {
+        if (showError) {
+            lv_label_set_text(lblPlayPauseIcon, LV_SYMBOL_WARNING);
+            lv_obj_set_style_bg_color(btnPlayPause, lv_color_hex(0xda3633), 0);
+            lv_obj_set_style_border_color(btnPlayPause, lv_color_hex(0xf85149), 0);
+        } else if (isBuffering) {
             lv_label_set_text(lblPlayPauseIcon, LV_SYMBOL_REFRESH);
             lv_obj_set_style_bg_color(btnPlayPause, lv_color_hex(0xd29922), 0);
             lv_obj_set_style_border_color(btnPlayPause, lv_color_hex(0xf0883e), 0);
@@ -2375,6 +2418,9 @@ void triggerCdnFailover() {
         Serial.printf("[AUDIO-FAIL] Direct online stream failed: %s\n", adHocStation.name.c_str());
         isBuffering = false;
         isPlaying = false;
+        isStreamError = true;
+        streamErrorReason = "! URL Offline / Stream 404";
+        streamErrorUntilMs = millis() + 8000;
         sendAudioStop();
         updateUI();
         return;
@@ -2463,10 +2509,13 @@ void triggerCdnFailover() {
         }
     }
 
-    // Failover exhausted
+    // Failover exhausted - station stream URL is offline or dead
     Serial.println("[AUDIO-FAIL] Stream unavailable or exhausted failover attempts.");
     isBuffering = false;
     isPlaying = false;
+    isStreamError = true;
+    streamErrorReason = "! URL Offline / Stream 404";
+    streamErrorUntilMs = millis() + 8000;
     cdnFailoverCount = 0;
     sendAudioStop();
     updateUI();
@@ -2474,6 +2523,9 @@ void triggerCdnFailover() {
 
 void playCurrentStation() {
     isAdHocPlaying = false;
+    isStreamError = false;
+    streamErrorReason = "";
+    streamErrorUntilMs = 0;
     if (runtimeStations.empty()) return;
     if (currentStationIndex < 0 || currentStationIndex >= (int)runtimeStations.size()) {
         currentStationIndex = 0;
@@ -2485,6 +2537,9 @@ void playCurrentStation() {
         sendAudioStop();
         isBuffering = false;
         isPlaying = false;
+        isStreamError = true;
+        streamErrorReason = "! Wi-Fi Disconnected";
+        streamErrorUntilMs = millis() + 6000;
         updateUI();
         return;
     }
@@ -2514,11 +2569,17 @@ void playCurrentStation() {
 
 void playDirectStream(const char* name, const char* url, const char* state, const char* lang) {
     if (!url || strlen(url) == 0) return;
+    isStreamError = false;
+    streamErrorReason = "";
+    streamErrorUntilMs = 0;
     if (WiFi.status() != WL_CONNECTED) {
         Serial.println("[AUDIO] Cannot play direct stream: WiFi not connected!");
         sendAudioStop();
         isBuffering = false;
         isPlaying = false;
+        isStreamError = true;
+        streamErrorReason = "! Wi-Fi Disconnected";
+        streamErrorUntilMs = millis() + 6000;
         updateUI();
         return;
     }
@@ -2598,7 +2659,8 @@ void my_audio_info(Audio::msg_t m) {
                   strstr(m.msg, "HTTP/1.1 403") || strstr(m.msg, "HTTP/1.1 500") ||
                   strstr(m.msg, "HTTP/1.1 502") || strstr(m.msg, "HTTP/1.1 503"))) {
         Serial.printf("[AUDIO-ERR] HTTP stream error detected: %s\n", m.msg);
-        if (millis() - lastFailoverMs > 2500) {
+        // During an active failover sequence (cdnFailoverCount > 0), bypass debounce so all CDNs are tried immediately
+        if (cdnFailoverCount > 0 || (millis() - lastFailoverMs > 2500)) {
             lastFailoverMs = millis();
             pendingCdnFailover = true;
         }
@@ -2606,6 +2668,7 @@ void my_audio_info(Audio::msg_t m) {
     }
 
     // Audio stream events or bitrate/sample-rate/sync confirms stream is actively decoding!
+    // Note: Never match on raw HTTP headers like "audio/" or "video/mp2t" or ".ts" as they arrive before audio frames!
     bool isSyncOrData = false;
     if (m.e == Audio::evt_bitrate || m.e == Audio::evt_name) {
         isSyncOrData = true;
@@ -2618,10 +2681,7 @@ void my_audio_info(Audio::msg_t m) {
                          strstr(m.msg, "Channels:") || 
                          strstr(m.msg, "BitRate") || 
                          strstr(m.msg, "format is") || 
-                         strstr(m.msg, "Sync accepted") || 
-                         strstr(m.msg, "video/mp2t") || 
-                         strstr(m.msg, ".ts") || 
-                         strstr(m.msg, "audio/"))) {
+                         strstr(m.msg, "Sync accepted"))) {
         isSyncOrData = true;
     }
 
@@ -2672,7 +2732,7 @@ void setStarterFavorites() {
 
 void saveFavorites() {
     prefs.begin("fav_radio", false);
-    prefs.putInt("fav_ver", 12);
+    prefs.putInt("fav_ver", 13);
     prefs.putInt("fav_cnt", (int)runtimeStations.size());
     for (size_t i = 0; i < runtimeStations.size(); i++) {
         char key[16];
@@ -2693,12 +2753,12 @@ void loadFavorites() {
     runtimeStations.clear();
     prefs.begin("fav_radio", false);
     int fav_ver = prefs.getInt("fav_ver", 0);
-    // Purge outdated streams to ensure verified CloudFront mirrors (v12 - verified active distribution mirrors)
-    if (fav_ver < 12) {
+    // Purge outdated streams to ensure verified CloudFront mirrors (v13 - verified active distribution mirrors)
+    if (fav_ver < 13) {
         prefs.clear();
-        prefs.putInt("fav_ver", 12);
+        prefs.putInt("fav_ver", 13);
         prefs.end();
-        Serial.println("[NVS] Migrating favorites to verified CloudFront mirrors (v12 active distributions)...");
+        Serial.println("[NVS] Migrating favorites to verified CloudFront mirrors (v13 active distributions)...");
         setStarterFavorites();
         return;
     }
@@ -2724,7 +2784,7 @@ void loadFavorites() {
         snprintf(key, sizeof(key), "fl_%u", (unsigned int)i);
         String lang = prefs.getString(key, "General");
 
-        if (url.startsWith("https://airhlspush") || url.length() < 10) {
+        if (url.startsWith("https://airhlspush") || url.indexOf("d1tmej9eu7kw5c.cloudfront.net/f70fdeca437dc326") >= 0 || url.length() < 10) {
             hasBadUrl = true;
         }
 
@@ -2865,6 +2925,18 @@ void updateAmbientLeds() {
         return;
     }
 
+    // 2.5 URL Failure / Offline Alert -> Warning pulsing red LEDs
+    if (isStreamError && (now < streamErrorUntilMs)) {
+        static float errPhase = 0;
+        errPhase += 0.25f;
+        uint8_t rAmp = (uint8_t)(160 + 95 * sin(errPhase));
+        for (int i = 0; i < NEOPIXEL_COUNT; i++) {
+            strip.setPixelColor(i, strip.Color(rAmp, 0, 0)); // Warning pulsing crimson red
+        }
+        strip.show();
+        return;
+    }
+
     // 3. Station Loading / Buffering -> Vibrant pulsing yellow
     // "Whne The Station is Loadinf the buffering is yellow, let the LED tooo be in yellow at taht time"
     if (isBuffering) {
@@ -2949,9 +3021,9 @@ static esp_err_t http_status_handler(httpd_req_t *req) {
     else if (currentScreen == SCREEN_WIFI_SCAN) scrName = "wifi_scan";
     else if (currentScreen == SCREEN_WIFI_KEYPAD) scrName = "wifi_keypad";
 
-    char buf[600];
+    char buf[700];
     snprintf(buf, sizeof(buf),
-             "{\"playing\":%s,\"buffering\":%s,\"idx\":%d,\"title\":\"%s\",\"state\":\"%s\",\"lang\":\"%s\",\"vol\":%d,\"muted\":%s,\"total\":%d,\"sta_ip\":\"%s\",\"led_mode\":%d,\"led_bright\":%d,\"screen\":\"%s\",\"clock_face\":%d,\"screensaver_sec\":%d,\"brightness\":%d}",
+             "{\"playing\":%s,\"buffering\":%s,\"idx\":%d,\"title\":\"%s\",\"state\":\"%s\",\"lang\":\"%s\",\"vol\":%d,\"muted\":%s,\"total\":%d,\"sta_ip\":\"%s\",\"led_mode\":%d,\"led_bright\":%d,\"screen\":\"%s\",\"clock_face\":%d,\"screensaver_sec\":%d,\"brightness\":%d,\"stream_error\":%s,\"error_msg\":\"%s\"}",
              isPlaying ? "true" : "false",
              isBuffering ? "true" : "false",
              statusIdx,
@@ -2965,7 +3037,9 @@ static esp_err_t http_status_handler(httpd_req_t *req) {
              scrName,
              currentClockFace,
              screensaverTimeoutSec,
-             currentBacklightBrightness);
+             currentBacklightBrightness,
+             (isStreamError && millis() < streamErrorUntilMs) ? "true" : "false",
+             (isStreamError && millis() < streamErrorUntilMs) ? streamErrorReason.c_str() : "");
 
     httpd_resp_set_type(req, "application/json");
     httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
@@ -3869,7 +3943,7 @@ void loop() {
     }
 
     // 2. Continuous Audio Stream Worker
-    if (isBuffering && (audioSampleRate > 0 || audioBitRate > 0 || audioCurrentTime > 0)) {
+    if (isBuffering && audioIsRunning && (audioSampleRate > 0 || audioBitRate > 0 || audioCurrentTime > 0)) {
         isBuffering = false;
         isPlaying = true;
         greenConfirmationUntilMs = millis() + 2000; // Green LED confirmation
@@ -4039,6 +4113,13 @@ void loop() {
     if (pendingSaveFavorites) {
         pendingSaveFavorites = false;
         saveFavorites();
+    }
+
+    // Auto-clear stream URL error state after alert duration expires
+    if (isStreamError && (millis() >= streamErrorUntilMs)) {
+        isStreamError = false;
+        streamErrorReason = "";
+        updateUI();
     }
 
     // 9. Background Wi-Fi Auto-Reconnect
