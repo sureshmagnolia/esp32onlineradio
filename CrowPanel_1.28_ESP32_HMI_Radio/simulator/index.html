@@ -603,11 +603,21 @@ header {
   letter-spacing: 0.5px;
   padding: 3px 12px;
   border-radius: 12px;
-  transition: all 0.25s ease;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
   box-shadow: 0 2px 8px rgba(0,0,0,0.6);
   display: flex;
   align-items: center;
   gap: 5px;
+  cursor: pointer;
+  user-select: none;
+}
+.ui-top-badge:hover {
+  transform: scale(1.06);
+  filter: brightness(1.2);
+  box-shadow: 0 0 12px rgba(88, 166, 255, 0.4);
+}
+.ui-top-badge:active {
+  transform: scale(0.96);
 }
 
 .ui-station-row {
@@ -672,6 +682,13 @@ header {
   margin-bottom: 4px;
   mask-image: linear-gradient(to right, transparent 0%, black 14%, black 86%, transparent 100%);
   -webkit-mask-image: linear-gradient(to right, transparent 0%, black 14%, black 86%, transparent 100%);
+  cursor: pointer;
+  user-select: none;
+  transition: transform 0.2s ease;
+}
+.ui-ip-ticker-wrap:hover {
+  transform: scale(1.08);
+  filter: brightness(1.3);
 }
 
 .ui-ip-ticker-inner {
@@ -1911,7 +1928,7 @@ header {
                 <path class="arc-indicator" id="svgArc" d="M 45 195 A 105 105 0 1 1 195 195" stroke-dasharray="0, 495" />
               </svg>
 
-              <div class="ui-top-badge" id="uiTopBadge">CH 01 OF 07</div>
+              <div class="ui-top-badge" id="uiTopBadge" title="🏠 Tap to open Home Launcher (or Swipe Up)">CH 01 OF 07</div>
 
               <div class="ui-station-row">
                 <button class="ui-nav-btn prev" id="uiBtnPrev" title="Previous Station (◀ or Swipe Right)">
@@ -1928,7 +1945,7 @@ header {
                 </button>
               </div>
 
-              <div class="ui-ip-ticker-wrap">
+              <div class="ui-ip-ticker-wrap" title="⚙️ Tap to open Settings Screen">
                 <div class="ui-ip-ticker-inner">
                   <span class="ui-ip-ticker-item" id="uiIpTicker">EDIFIER • 🔊 85% • 192.168.4.1</span>
                   <span style="color:#30363d;padding:0 8px;">•</span>
@@ -3902,6 +3919,16 @@ touchScreen.addEventListener('mouseup', (e) => {
 document.getElementById('uiBtnPrev').addEventListener('click', (e) => { e.stopPropagation(); prevStation(); });
 document.getElementById('uiBtnNext').addEventListener('click', (e) => { e.stopPropagation(); nextStation(); });
 document.getElementById('uiStationBox').addEventListener('click', (e) => { e.stopPropagation(); togglePlayPause(); });
+document.getElementById('uiTopBadge').addEventListener('click', (e) => {
+  e.stopPropagation();
+  logSerial('[TOUCH] CST816D: Top Badge Tapped -> Home Launcher');
+  switchScreen(SCREEN_HOME_LAUNCHER);
+});
+document.querySelector('.ui-ip-ticker-wrap').addEventListener('click', (e) => {
+  e.stopPropagation();
+  logSerial('[TOUCH] CST816D: Bottom Ticker Tapped -> Settings Screen');
+  switchScreen(SCREEN_SETTINGS);
+});
 
 /* =========================================================================
  * ESP32-S3 Internal Silicon & Memory Architecture Telemetry Loop

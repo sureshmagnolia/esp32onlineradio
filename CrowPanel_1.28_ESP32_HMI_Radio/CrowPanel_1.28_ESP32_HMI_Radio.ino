@@ -599,6 +599,14 @@ static void my_touchpad_read(lv_indev_drv_t *indev_driver, lv_indev_data_t *data
             if (currentScreen == SCREEN_RADIO) {
                 pendingWebAction = ACT_PREV;
             }
+        } else if (gesture == SlideUp && (now - lastGestureTime > 500)) {
+            lastGestureTime = now;
+            pendingScreenSwitch = SCREEN_HOME_LAUNCHER;
+            hasPendingScreenSwitch = true;
+        } else if (gesture == SlideDown && (now - lastGestureTime > 500)) {
+            lastGestureTime = now;
+            pendingScreenSwitch = SCREEN_CLOCK;
+            hasPendingScreenSwitch = true;
         }
     } else {
         data->state = LV_INDEV_STATE_REL;
