@@ -159,6 +159,7 @@ enum KnobMode {
 };
 static volatile KnobMode currentKnobMode = KNOB_MODE_TUNE;
 static unsigned long lastVolModeSwitchMs = 0;
+static unsigned long lastVolAdjustMs = 0;
 static const unsigned long VOL_MODE_TIMEOUT_MS = 4000;
 
 // Ambient Light Modes
@@ -1369,15 +1370,15 @@ void createCircularUI() {
     // Hide knob for sleek bezel-integrated progress ring
     lv_obj_set_style_opa(arcRing, LV_OPA_TRANSP, LV_PART_KNOB);
 
-    // Top-Center: Large Home Button (⌂) safely inside circular display
+    // Top Row: Small Home Button (⌂) Left, Channel Badge Center, Small Settings Button (⚙) Right
     btnRadioHome = lv_btn_create(scrRadio);
-    lv_obj_set_size(btnRadioHome, 38, 38);
-    lv_obj_align(btnRadioHome, LV_ALIGN_TOP_MID, 0, 8);
+    lv_obj_set_size(btnRadioHome, 30, 30);
+    lv_obj_align(btnRadioHome, LV_ALIGN_TOP_MID, -52, 14);
     lv_obj_set_style_radius(btnRadioHome, LV_RADIUS_CIRCLE, 0);
     lv_obj_set_style_bg_color(btnRadioHome, lv_color_hex(0x161b22), 0);
     lv_obj_set_style_border_color(btnRadioHome, lv_color_hex(0x30363d), 0);
     lv_obj_set_style_border_width(btnRadioHome, 1, 0);
-    lv_obj_set_ext_click_area(btnRadioHome, 10);
+    lv_obj_set_ext_click_area(btnRadioHome, 8);
     lv_obj_add_event_cb(btnRadioHome, [](lv_event_t* e) {
         if (lv_event_get_code(e) == LV_EVENT_CLICKED) switchScreen(SCREEN_HOME_LAUNCHER);
     }, LV_EVENT_CLICKED, NULL);
@@ -1385,9 +1386,7 @@ void createCircularUI() {
     lv_label_set_text(lblRH, LV_SYMBOL_HOME);
     lv_obj_center(lblRH);
     lv_obj_set_style_text_color(lblRH, lv_color_hex(0x58a6ff), 0);
-    lv_obj_set_style_text_font(lblRH, &lv_font_montserrat_16, 0);
-
-    btnRadioSettings = nullptr; // Uncluttered radio interface
+    lv_obj_set_style_text_font(lblRH, &lv_font_montserrat_14, 0);
 
     // Top Center: Channel Status Capsule
     lblBadgeTop = lv_label_create(scrRadio);
@@ -1395,11 +1394,28 @@ void createCircularUI() {
     lv_obj_set_style_text_font(lblBadgeTop, &lv_font_montserrat_10, 0);
     lv_obj_set_style_bg_color(lblBadgeTop, lv_color_hex(0x1f6feb), 0);
     lv_obj_set_style_bg_opa(lblBadgeTop, LV_OPA_COVER, 0);
-    lv_obj_set_style_pad_hor(lblBadgeTop, 8, 0);
-    lv_obj_set_style_pad_ver(lblBadgeTop, 2, 0);
+    lv_obj_set_style_pad_hor(lblBadgeTop, 7, 0);
+    lv_obj_set_style_pad_ver(lblBadgeTop, 3, 0);
     lv_obj_set_style_radius(lblBadgeTop, 8, 0);
-    lv_obj_align(lblBadgeTop, LV_ALIGN_TOP_MID, 0, 48);
+    lv_obj_align(lblBadgeTop, LV_ALIGN_TOP_MID, 0, 18);
     lv_label_set_text(lblBadgeTop, "CH 01/10");
+
+    btnRadioSettings = lv_btn_create(scrRadio);
+    lv_obj_set_size(btnRadioSettings, 30, 30);
+    lv_obj_align(btnRadioSettings, LV_ALIGN_TOP_MID, 52, 14);
+    lv_obj_set_style_radius(btnRadioSettings, LV_RADIUS_CIRCLE, 0);
+    lv_obj_set_style_bg_color(btnRadioSettings, lv_color_hex(0x161b22), 0);
+    lv_obj_set_style_border_color(btnRadioSettings, lv_color_hex(0x30363d), 0);
+    lv_obj_set_style_border_width(btnRadioSettings, 1, 0);
+    lv_obj_set_ext_click_area(btnRadioSettings, 8);
+    lv_obj_add_event_cb(btnRadioSettings, [](lv_event_t* e) {
+        if (lv_event_get_code(e) == LV_EVENT_CLICKED) switchScreen(SCREEN_SETTINGS);
+    }, LV_EVENT_CLICKED, NULL);
+    lv_obj_t* lblRS = lv_label_create(btnRadioSettings);
+    lv_label_set_text(lblRS, LV_SYMBOL_SETTINGS);
+    lv_obj_center(lblRS);
+    lv_obj_set_style_text_color(lblRS, lv_color_hex(0x8b949e), 0);
+    lv_obj_set_style_text_font(lblRS, &lv_font_montserrat_14, 0);
 
     // Station Name (Large, clear, centered)
     lblStationName = lv_label_create(scrRadio);
@@ -2652,6 +2668,7 @@ void setVolume(int v) {
     if (v > 21) v = 21;
     currentVolume = v;
     isMuted = (currentVolume == 0);
+    lastVolAdjustMs = millis();
     sendAudioSetVolume(currentVolume);
     if (currentScreen == SCREEN_RADIO && arcRing) {
         lv_arc_set_value(arcRing, currentVolume);
@@ -2949,8 +2966,8 @@ void updateAmbientLeds() {
         ledChaseDir = 0;
     }
 
-    // 2. Volume Meter Mode (When adjusting volume knob)
-    if (currentKnobMode == KNOB_MODE_VOL) {
+    // 2. Volume Meter Mode (Momentary 1.2s feedback only when knob is actively rotated)
+    if (now - lastVolAdjustMs < 1200) {
         strip.clear();
         int activeLeds = (currentVolume * NEOPIXEL_COUNT + 10) / 21;
         for (int i = 0; i < NEOPIXEL_COUNT; i++) {

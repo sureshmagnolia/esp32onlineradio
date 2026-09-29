@@ -595,6 +595,44 @@ header {
   padding: 14px 10px 10px;
 }
 
+.ui-radio-top-bar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  position: relative;
+  z-index: 15;
+  margin-top: 2px;
+}
+
+.ui-circle-icon-btn {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: rgba(22, 27, 34, 0.9);
+  border: 1px solid rgba(88, 166, 255, 0.35);
+  color: #58a6ff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  cursor: pointer;
+  transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: 0 2px 6px rgba(0,0,0,0.5);
+  user-select: none;
+  padding: 0;
+}
+.ui-circle-icon-btn:hover {
+  background: rgba(33, 40, 52, 1);
+  border-color: #58a6ff;
+  color: #fff;
+  transform: scale(1.12);
+  box-shadow: 0 0 10px rgba(88, 166, 255, 0.4);
+}
+.ui-circle-icon-btn:active {
+  transform: scale(0.92);
+}
+
 .ui-top-badge {
   background: var(--accent-green);
   color: #fff;
@@ -618,6 +656,30 @@ header {
 }
 .ui-top-badge:active {
   transform: scale(0.96);
+}
+
+.ui-gesture-toast {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%) scale(0.7);
+  background: rgba(13, 17, 23, 0.94);
+  border: 1px solid rgba(88, 166, 255, 0.5);
+  color: #58a6ff;
+  font-size: 11.5px;
+  font-weight: 700;
+  padding: 6px 14px;
+  border-radius: 20px;
+  pointer-events: none;
+  opacity: 0;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  z-index: 99;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.8);
+  white-space: nowrap;
+}
+.ui-gesture-toast.show {
+  opacity: 1;
+  transform: translate(-50%, -50%) scale(1);
 }
 
 .ui-station-row {
@@ -1928,7 +1990,12 @@ header {
                 <path class="arc-indicator" id="svgArc" d="M 45 195 A 105 105 0 1 1 195 195" stroke-dasharray="0, 495" />
               </svg>
 
-              <div class="ui-top-badge" id="uiTopBadge" title="🏠 Tap to open Home Launcher (or Swipe Up)">CH 01 OF 07</div>
+              <!-- Top Action Bar: Small Home Button (Left), Channel Capsule (Center), Small Settings Button (Right) -->
+              <div class="ui-radio-top-bar">
+                <button class="ui-circle-icon-btn" id="btnRadioHome" title="🏠 Return to Home Launcher (or Swipe Up)">🏠</button>
+                <div class="ui-top-badge" id="uiTopBadge" title="Channel Indicator (Tap for Home Launcher)">CH 01 OF 07</div>
+                <button class="ui-circle-icon-btn" id="btnRadioSettings" title="⚙️ Open Settings (or Tap Bottom Bar)">⚙️</button>
+              </div>
 
               <div class="ui-station-row">
                 <button class="ui-nav-btn prev" id="uiBtnPrev" title="Previous Station (◀ or Swipe Right)">
@@ -2037,6 +2104,8 @@ header {
               </div>
             </div>
 
+            <!-- Centered Gesture Feedback Toast Overlay -->
+            <div class="ui-gesture-toast" id="uiGestureToast"></div>
           </div>
         </div>
 
@@ -3565,6 +3634,21 @@ function renderLedLoop() {
     // Handled by hold/boot engine
   } else if (!isPoweredOn || currentLedMode === 5 || ledBrightness === 0) {
     leds.forEach(l => { l.style.background = '#21262d'; l.style.boxShadow = 'none'; });
+  } else if (Date.now() - lastVolChangeTime < 1200) {
+    // Show momentary volume feedback only when knob is actively rotated
+    const activeLeds = Math.round((currentVol / 21) * 5);
+    leds.forEach((l, i) => {
+      if (i < activeLeds) {
+        l.style.background = i <= 2 ? '#2ea043' : (i === 3 ? '#d29922' : '#da3633');
+        l.style.boxShadow = `0 0 10px ${i <= 2 ? '#2ea043' : (i === 3 ? '#d29922' : '#da3633')}`;
+      } else {
+        l.style.background = '#21262d';
+        l.style.boxShadow = 'none';
+      }
+    });
+  } else if (isPlaying) {
+    // USER EXPLICIT REQUIREMENT: The Ring LEDS should NOT glow while playing!
+    leds.forEach(l => { l.style.background = '#21262d'; l.style.boxShadow = 'none'; });
   } else if (isUrlOffline) {
     const alpha = (0.5 + 0.5 * Math.sin(ledFrame * 0.2));
     leds.forEach(l => {
@@ -3577,18 +3661,14 @@ function renderLedLoop() {
       l.style.background = `rgba(210, 153, 34, ${alpha})`;
       l.style.boxShadow = `0 0 ${14 * alpha}px #d29922`;
     });
-  } else if (isPlaying && currentLedMode === 0) {
-    const alpha = (0.35 + 0.35 * Math.sin(ledFrame * 0.05));
-    leds.forEach(l => {
-      l.style.background = `rgba(0, 255, 96, ${alpha})`;
-      l.style.boxShadow = `0 0 ${16 * alpha}px #00ff60`;
-    });
   } else if (currentLedMode === 3) {
     leds.forEach((l, i) => {
       const hue = (ledFrame * 3 + i * 72) % 360;
       l.style.background = `hsl(${hue}, 90%, 55%)`;
       l.style.boxShadow = `0 0 14px hsl(${hue}, 90%, 55%)`;
     });
+  } else {
+    leds.forEach(l => { l.style.background = '#21262d'; l.style.boxShadow = 'none'; });
   }
 
   requestAnimationFrame(renderLedLoop);
@@ -3868,63 +3948,137 @@ window.addEventListener('mousemove', (e) => {
 
 window.addEventListener('mouseup', () => { isDragging = false; });
 
-// Screen Gestures (CST816D Swipe & Tap)
+// Screen Gestures (CST816D Swipe & Tap via Unified Pointer Events)
 const touchScreen = document.getElementById('touchScreen');
-let touchStartX = 0;
-let touchStartY = 0;
-let touchStartTime = 0;
+let pointerStartX = 0;
+let pointerStartY = 0;
+let pointerStartTime = 0;
+let isPointerDown = false;
+let gestureDidSwipe = false;
 
-touchScreen.addEventListener('mousedown', (e) => {
-  touchStartX = e.clientX;
-  touchStartY = e.clientY;
-  touchStartTime = Date.now();
+function showGestureToast(msg) {
+  const toast = document.getElementById('uiGestureToast');
+  if (!toast) return;
+  toast.innerText = msg;
+  toast.classList.add('show');
+  clearTimeout(toast._timer);
+  toast._timer = setTimeout(() => { toast.classList.remove('show'); }, 800);
+}
+
+touchScreen.addEventListener('pointerdown', (e) => {
+  if (e.button !== 0 && e.pointerType === 'mouse') return;
+  isPointerDown = true;
+  gestureDidSwipe = false;
+  pointerStartX = e.clientX;
+  pointerStartY = e.clientY;
+  pointerStartTime = Date.now();
 
   if (isStandby) {
     startPhysicalButtonHold();
   }
+  try { touchScreen.setPointerCapture(e.pointerId); } catch(err) {}
 });
 
-touchScreen.addEventListener('mouseup', (e) => {
+touchScreen.addEventListener('pointermove', (e) => {
+  if (!isPointerDown) return;
+  const dx = e.clientX - pointerStartX;
+  const dy = e.clientY - pointerStartY;
+  if (Math.abs(dx) > 12 || Math.abs(dy) > 12) {
+    gestureDidSwipe = true;
+  }
+});
+
+touchScreen.addEventListener('pointerup', (e) => {
+  if (!isPointerDown) return;
+  isPointerDown = false;
+
   if (isStandby) {
     stopPhysicalButtonHold();
     return;
   }
 
-  const dx = e.clientX - touchStartX;
-  const dy = e.clientY - touchStartY;
-  const dt = Date.now() - touchStartTime;
+  const dx = e.clientX - pointerStartX;
+  const dy = e.clientY - pointerStartY;
+  const dt = Date.now() - pointerStartTime;
+  const absX = Math.abs(dx);
+  const absY = Math.abs(dy);
 
-  if (Math.abs(dx) > 35 && dt < 450) {
-    // Horizontal Swipe
-    if (dx > 0) {
-      logSerial(`[TOUCH] CST816D Gesture: SWIPE_RIGHT -> Prev Station`);
-      prevStation();
+  // Responsive Swipe Threshold: distance >= 22px and duration <= 800ms
+  if ((absX >= 22 || absY >= 22) && dt < 800) {
+    gestureDidSwipe = true;
+    setTimeout(() => { gestureDidSwipe = false; }, 250);
+
+    if (absX > absY) {
+      // Horizontal Swipe
+      if (dx > 0) {
+        logSerial(`[TOUCH] CST816D Gesture: SWIPE_RIGHT -> Prev Station`);
+        showGestureToast('Swipe Right ◀ Prev');
+        prevStation();
+      } else {
+        logSerial(`[TOUCH] CST816D Gesture: SWIPE_LEFT -> Next Station`);
+        showGestureToast('Swipe Left ▶ Next');
+        nextStation();
+      }
     } else {
-      logSerial(`[TOUCH] CST816D Gesture: SWIPE_LEFT -> Next Station`);
-      nextStation();
+      // Vertical Swipe
+      if (dy < 0) {
+        logSerial(`[TOUCH] CST816D Gesture: SWIPE_UP -> Home Launcher`);
+        showGestureToast('Swipe Up ⬆ Home');
+        switchScreen(SCREEN_HOME_LAUNCHER);
+      } else {
+        logSerial(`[TOUCH] CST816D Gesture: SWIPE_DOWN -> Clock`);
+        showGestureToast('Swipe Down ⬇ Clock');
+        switchScreen(SCREEN_CLOCK);
+      }
     }
-  } else if (Math.abs(dy) > 35 && dt < 450) {
-    // Vertical Swipe
-    if (dy < 0) {
-      logSerial(`[TOUCH] CST816D Gesture: SWIPE_UP -> Home Launcher`);
-      switchScreen(SCREEN_HOME_LAUNCHER);
-    } else {
-      logSerial(`[TOUCH] CST816D Gesture: SWIPE_DOWN -> Clock`);
-      switchScreen(SCREEN_CLOCK);
-    }
+  } else {
+    setTimeout(() => { gestureDidSwipe = false; }, 60);
   }
 });
 
+touchScreen.addEventListener('pointercancel', () => {
+  isPointerDown = false;
+  gestureDidSwipe = false;
+  if (isStandby) stopPhysicalButtonHold();
+});
+
+// Prevent browser native image/text dragging from interrupting gestures
+touchScreen.addEventListener('dragstart', (e) => e.preventDefault());
+
 // Explicit Navigation clicks
-document.getElementById('uiBtnPrev').addEventListener('click', (e) => { e.stopPropagation(); prevStation(); });
-document.getElementById('uiBtnNext').addEventListener('click', (e) => { e.stopPropagation(); nextStation(); });
-document.getElementById('uiStationBox').addEventListener('click', (e) => { e.stopPropagation(); togglePlayPause(); });
+document.getElementById('uiBtnPrev').addEventListener('click', (e) => {
+  if (gestureDidSwipe) return;
+  e.stopPropagation();
+  prevStation();
+});
+document.getElementById('uiBtnNext').addEventListener('click', (e) => {
+  if (gestureDidSwipe) return;
+  e.stopPropagation();
+  nextStation();
+});
+document.getElementById('uiStationBox').addEventListener('click', (e) => {
+  if (gestureDidSwipe) return;
+  e.stopPropagation();
+  togglePlayPause();
+});
+document.getElementById('btnRadioHome').addEventListener('click', (e) => {
+  e.stopPropagation();
+  logSerial('[TOUCH] Small Home Button Tapped -> Home Launcher');
+  switchScreen(SCREEN_HOME_LAUNCHER);
+});
+document.getElementById('btnRadioSettings').addEventListener('click', (e) => {
+  e.stopPropagation();
+  logSerial('[TOUCH] Small Settings Button Tapped -> Settings Screen');
+  switchScreen(SCREEN_SETTINGS);
+});
 document.getElementById('uiTopBadge').addEventListener('click', (e) => {
+  if (gestureDidSwipe) return;
   e.stopPropagation();
   logSerial('[TOUCH] CST816D: Top Badge Tapped -> Home Launcher');
   switchScreen(SCREEN_HOME_LAUNCHER);
 });
 document.querySelector('.ui-ip-ticker-wrap').addEventListener('click', (e) => {
+  if (gestureDidSwipe) return;
   e.stopPropagation();
   logSerial('[TOUCH] CST816D: Bottom Ticker Tapped -> Settings Screen');
   switchScreen(SCREEN_SETTINGS);
