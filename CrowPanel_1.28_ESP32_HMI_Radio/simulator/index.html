@@ -1992,9 +1992,9 @@ header {
 
               <!-- Top Action Bar: Small Home Button (Left), Channel Capsule (Center), Small Settings Button (Right) -->
               <div class="ui-radio-top-bar">
-                <button class="ui-circle-icon-btn" id="btnRadioHome" title="🏠 Return to Home Launcher (or Swipe Up)">🏠</button>
-                <div class="ui-top-badge" id="uiTopBadge" title="Channel Indicator (Tap for Home Launcher)">CH 01 OF 07</div>
-                <button class="ui-circle-icon-btn" id="btnRadioSettings" title="⚙️ Open Settings (or Tap Bottom Bar)">⚙️</button>
+                <button class="ui-circle-icon-btn" id="btnRadioHome" onclick="switchScreen(SCREEN_HOME_LAUNCHER)" title="🏠 Return to Home Launcher (or Swipe Up)">🏠</button>
+                <div class="ui-top-badge" id="uiTopBadge" onclick="switchScreen(SCREEN_HOME_LAUNCHER)" title="Channel Indicator (Tap for Home Launcher)">CH 01 OF 07</div>
+                <button class="ui-circle-icon-btn" id="btnRadioSettings" onclick="switchScreen(SCREEN_SETTINGS)" title="⚙️ Open Settings (or Tap Bottom Bar)">⚙️</button>
               </div>
 
               <div class="ui-station-row">
@@ -3967,6 +3967,13 @@ function showGestureToast(msg) {
 
 touchScreen.addEventListener('pointerdown', (e) => {
   if (e.button !== 0 && e.pointerType === 'mouse') return;
+
+  // If clicked directly on an interactive button or badge, do NOT treat as swipe gesture
+  if (e.target.closest('button, .ui-circle-icon-btn, .ui-nav-btn, .ui-top-badge, .ui-ip-ticker-wrap')) {
+    isPointerDown = false;
+    return;
+  }
+
   isPointerDown = true;
   gestureDidSwipe = false;
   pointerStartX = e.clientX;
@@ -3976,7 +3983,6 @@ touchScreen.addEventListener('pointerdown', (e) => {
   if (isStandby) {
     startPhysicalButtonHold();
   }
-  try { touchScreen.setPointerCapture(e.pointerId); } catch(err) {}
 });
 
 touchScreen.addEventListener('pointermove', (e) => {
@@ -3988,7 +3994,7 @@ touchScreen.addEventListener('pointermove', (e) => {
   }
 });
 
-touchScreen.addEventListener('pointerup', (e) => {
+window.addEventListener('pointerup', (e) => {
   if (!isPointerDown) return;
   isPointerDown = false;
 
@@ -4036,7 +4042,7 @@ touchScreen.addEventListener('pointerup', (e) => {
   }
 });
 
-touchScreen.addEventListener('pointercancel', () => {
+window.addEventListener('pointercancel', () => {
   isPointerDown = false;
   gestureDidSwipe = false;
   if (isStandby) stopPhysicalButtonHold();
