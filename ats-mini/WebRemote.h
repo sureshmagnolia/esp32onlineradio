@@ -225,7 +225,8 @@ input[type=text],input[type=password]{width:100%;padding:8px;background:#0d1424;
 <div class="nav-tabs">
   <div class="nav-tab active" onclick="showTab(0)">All Bands (28)</div>
   <div class="nav-tab" onclick="showTab(1)">Memory (99)</div>
-  <div class="nav-tab" onclick="showTab(2)">Wi-Fi Setup</div>
+  <div class="nav-tab" onclick="showTab(2)" style="color:var(--cyan);font-weight:700">?? DXing Suite</div>
+  <div class="nav-tab" onclick="showTab(3)">Wi-Fi Setup</div>
 </div>
 
 <div class="tab-content active" id="tab-0">
@@ -245,7 +246,165 @@ input[type=text],input[type=password]{width:100%;padding:8px;background:#0d1424;
   </div>
 </div>
 
+<!-- Tab 2: DXing Suite -->
 <div class="tab-content" id="tab-2">
+  <div class="card" style="border-color:rgba(0,210,255,0.3)">
+    <div class="dx-tabs">
+      <div class="dx-tab active" onclick="switchDxTab('station-id')">?? Station ID</div>
+      <div class="dx-tab" onclick="switchDxTab('logbook')">?? DX Logbook</div>
+      <div class="dx-tab" onclick="switchDxTab('atc-utils')">?? ATC & Utils</div>
+      <div class="dx-tab" onclick="switchDxTab('space-weather')">?? Space WX</div>
+    </div>
+
+    <!-- Sub-tab 1: Station ID -->
+    <div id="dx-tab-station-id" class="dx-panel active">
+      <div style="background:var(--card2);padding:8px;border-radius:8px;border:1px solid var(--border);margin-bottom:8px">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <span style="font-size:12px;font-weight:700;color:var(--sub)">Currently Tuned:</span>
+          <span id="dx-curr-freq" style="font-family:monospace;font-weight:800;color:var(--cyan);font-size:14px">-- kHz</span>
+        </div>
+        <div id="dx-station-match" style="margin-top:6px;font-size:13px;font-weight:700;color:var(--amber)">
+          Querying Station Database...
+        </div>
+        <div id="dx-station-details" style="font-size:11px;color:var(--sub);margin-top:3px">
+          Matching frequency against live broadcast schedule
+        </div>
+      </div>
+
+      <div class="dx-sec-title">Active International Broadcasters</div>
+      <div style="display:flex;flex-wrap:wrap;gap:4px">
+        <span class="dx-chip" onclick="tuneDirect(15000,'AM')">WWV 15.00 MHz</span>
+        <span class="dx-chip" onclick="tuneDirect(10000,'AM')">WWV 10.00 MHz</span>
+        <span class="dx-chip" onclick="tuneDirect(11850,'AM')">BBC 11.85 MHz</span>
+        <span class="dx-chip" onclick="tuneDirect(9740,'AM')">BBC 9.74 MHz</span>
+        <span class="dx-chip" onclick="tuneDirect(11590,'AM')">AIR 11.59 MHz</span>
+        <span class="dx-chip" onclick="tuneDirect(9425,'AM')">VOA 9.42 MHz</span>
+        <span class="dx-chip" onclick="tuneDirect(11780,'AM')">VOA 11.78 MHz</span>
+        <span class="dx-chip" onclick="tuneDirect(9580,'AM')">DW 9.58 MHz</span>
+        <span class="dx-chip" onclick="tuneDirect(13630,'AM')">CRI 13.63 MHz</span>
+        <span class="dx-chip" onclick="tuneDirect(11880,'AM')">NHK 11.88 MHz</span>
+        <span class="dx-chip" onclick="tuneDirect(9600,'AM')">Radio Romania</span>
+      </div>
+    </div>
+
+    <!-- Sub-tab 2: One-Click DX Logbook -->
+    <div id="dx-tab-logbook" class="dx-panel">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:8px">
+        <input type="text" id="dx-log-rst" placeholder="RST / SINPO (e.g. 599)" style="font-size:12px;padding:6px;border-radius:6px;background:var(--card2);border:1px solid var(--border);color:#fff">
+        <input type="text" id="dx-log-qth" placeholder="QTH / Remarks" style="font-size:12px;padding:6px;border-radius:6px;background:var(--card2);border:1px solid var(--border);color:#fff">
+      </div>
+      <div style="display:flex;gap:6px;margin-bottom:8px">
+        <button class="btn-accent" style="flex:2;padding:8px" onclick="logCurrentDx()">?? Log Current Signal</button>
+        <button style="flex:1;padding:8px" onclick="exportAdif()">?? ADIF</button>
+        <button style="flex:1;padding:8px" onclick="exportCsv()">?? CSV</button>
+      </div>
+      <div style="max-height:180px;overflow-y:auto;border:1px solid var(--border);border-radius:6px">
+        <table class="dx-log-table">
+          <thead>
+            <tr><th>UTC Time</th><th>kHz</th><th>Mode</th><th>Station / Notes</th><th>Sig</th><th></th></tr>
+          </thead>
+          <tbody id="dx-log-tbody">
+            <tr><td colspan="6" style="text-align:center;color:var(--sub);padding:12px">No logged DX catches yet.</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div style="text-align:right;margin-top:6px">
+        <button style="padding:4px 8px;font-size:10px;background:transparent;border:none;color:var(--red)" onclick="clearDxLog()">Clear Logbook</button>
+      </div>
+    </div>
+
+    <!-- Sub-tab 3: Oceanic ATC & Utilities -->
+    <div id="dx-tab-atc-utils" class="dx-panel">
+      <div class="dx-sec-title">North Atlantic MWARA (Shanwick / Gander) USB</div>
+      <div style="display:flex;flex-wrap:wrap;gap:4px">
+        <span class="dx-chip" onclick="tuneDirect(5598,'USB')">5598 kHz</span>
+        <span class="dx-chip" onclick="tuneDirect(5616,'USB')">5616 kHz</span>
+        <span class="dx-chip" onclick="tuneDirect(5649,'USB')">5649 kHz</span>
+        <span class="dx-chip" onclick="tuneDirect(8864,'USB')">8864 kHz</span>
+        <span class="dx-chip" onclick="tuneDirect(8891,'USB')">8891 kHz</span>
+        <span class="dx-chip" onclick="tuneDirect(8906,'USB')">8906 kHz</span>
+      </div>
+
+      <div class="dx-sec-title">Indian Ocean MWARA (Mumbai / Kolkata) USB</div>
+      <div style="display:flex;flex-wrap:wrap;gap:4px">
+        <span class="dx-chip" onclick="tuneDirect(3470,'USB')">3470 kHz</span>
+        <span class="dx-chip" onclick="tuneDirect(5634,'USB')">5634 kHz</span>
+        <span class="dx-chip" onclick="tuneDirect(8879,'USB')">8879 kHz</span>
+        <span class="dx-chip" onclick="tuneDirect(10018,'USB')">10018 kHz</span>
+        <span class="dx-chip" onclick="tuneDirect(13288,'USB')">13288 kHz</span>
+      </div>
+
+      <div class="dx-sec-title">Pacific MWARA (San Francisco / Tokyo) USB</div>
+      <div style="display:flex;flex-wrap:wrap;gap:4px">
+        <span class="dx-chip" onclick="tuneDirect(3455,'USB')">3455 kHz</span>
+        <span class="dx-chip" onclick="tuneDirect(5574,'USB')">5574 kHz</span>
+        <span class="dx-chip" onclick="tuneDirect(8843,'USB')">8843 kHz</span>
+        <span class="dx-chip" onclick="tuneDirect(11342,'USB')">11342 kHz</span>
+        <span class="dx-chip" onclick="tuneDirect(13261,'USB')">13261 kHz</span>
+      </div>
+
+      <div class="dx-sec-title">VOLMET Aviation Weather Broadcasts USB</div>
+      <div style="display:flex;flex-wrap:wrap;gap:4px">
+        <span class="dx-chip" onclick="tuneDirect(5505,'USB')">Shannon 5505</span>
+        <span class="dx-chip" onclick="tuneDirect(8957,'USB')">Shannon 8957</span>
+        <span class="dx-chip" onclick="tuneDirect(13264,'USB')">Shannon 13264</span>
+        <span class="dx-chip" onclick="tuneDirect(6604,'USB')">New York 6604</span>
+        <span class="dx-chip" onclick="tuneDirect(5450,'USB')">RAF UK 5450</span>
+        <span class="dx-chip" onclick="tuneDirect(6676,'USB')">Bangkok 6676</span>
+        <span class="dx-chip" onclick="tuneDirect(8828,'USB')">Hong Kong 8828</span>
+      </div>
+
+      <div class="dx-sec-title">Time Standard Beacons & Utility Radios</div>
+      <div style="display:flex;flex-wrap:wrap;gap:4px">
+        <span class="dx-chip" onclick="tuneDirect(5000,'AM')">WWV 5000</span>
+        <span class="dx-chip" onclick="tuneDirect(10000,'AM')">WWV 10000</span>
+        <span class="dx-chip" onclick="tuneDirect(15000,'AM')">WWV 15000</span>
+        <span class="dx-chip" onclick="tuneDirect(20000,'AM')">WWV 20000</span>
+        <span class="dx-chip" onclick="tuneDirect(3330,'USB')">CHU 3330</span>
+        <span class="dx-chip" onclick="tuneDirect(7850,'USB')">CHU 7850</span>
+        <span class="dx-chip" onclick="tuneDirect(14670,'USB')">CHU 14670</span>
+        <span class="dx-chip" onclick="tuneDirect(4625,'USB')" style="border-color:var(--purple);color:#c084fc">UVB-76 Buzzer</span>
+        <span class="dx-chip" onclick="tuneDirect(2182,'USB')" style="border-color:var(--red);color:#f87171">Marine Distress</span>
+      </div>
+    </div>
+
+    <!-- Sub-tab 4: Space Weather & Propagation -->
+    <div id="dx-tab-space-weather" class="dx-panel">
+      <div class="dx-weather-grid">
+        <div class="dx-weather-box">
+          <div class="dx-weather-val" id="sw-sfi">162</div>
+          <div class="dx-weather-lbl">Solar Flux (SFI)</div>
+        </div>
+        <div class="dx-weather-box">
+          <div class="dx-weather-val" style="color:var(--green)" id="sw-k">1</div>
+          <div class="dx-weather-lbl">Geomagnetic (K-Index)</div>
+        </div>
+        <div class="dx-weather-box">
+          <div class="dx-weather-val" id="sw-ssn">134</div>
+          <div class="dx-weather-lbl">Sunspots (SSN)</div>
+        </div>
+        <div class="dx-weather-box">
+          <div class="dx-weather-val" style="color:var(--green)" id="sw-a">5</div>
+          <div class="dx-weather-lbl">Planetary A-Index</div>
+        </div>
+      </div>
+      <div style="background:var(--card2);border:1px solid var(--border);border-radius:8px;padding:8px">
+        <div style="font-weight:700;font-size:11px;color:var(--amber);margin-bottom:4px">HF Band Conditions Forecast</div>
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:4px;font-size:10px;text-align:center">
+          <div style="padding:4px;background:#0f172a;border-radius:4px">80m-40m<br><b style="color:var(--green)">GOOD (Night)</b></div>
+          <div style="padding:4px;background:#0f172a;border-radius:4px">30m-20m<br><b style="color:var(--green)">EXCELLENT</b></div>
+          <div style="padding:4px;background:#0f172a;border-radius:4px">17m-15m<br><b style="color:var(--cyan)">GOOD (Day)</b></div>
+          <div style="padding:4px;background:#0f172a;border-radius:4px">12m-10m<br><b style="color:var(--amber)">FAIR (Day)</b></div>
+        </div>
+      </div>
+      <div style="margin-top:6px;font-size:10px;color:var(--sub);text-align:center">
+        * Quiet geomagnetic field (K?2) offers optimal propagation for weak signal DXing.
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="tab-content" id="tab-3">
   <div class="card">
     <div style="font-size:13px;font-weight:700;color:var(--cyan);margin-bottom:6px">Connect ATS-Mini to Home Wi-Fi</div>
     <p style="font-size:12px;color:var(--sub);margin-bottom:8px">Scan nearby networks or enter your home Wi-Fi details. Once saved, the radio will connect and be accessible on your local network.</p>
@@ -566,6 +725,7 @@ function showTab(idx){
   document.querySelectorAll('.tab-content').forEach((c,i)=>c.classList.toggle('active',i===idx));
   if(idx===0 && !bandsData.length) loadBands();
   if(idx===1) loadMemories();
+  if(idx===2) { renderDxLog(); checkLiveStation(); }
 }
 function loadBands(){
   fetch('/api/bands').then(r=>r.json()).then(data=>{
