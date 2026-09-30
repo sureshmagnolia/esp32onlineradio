@@ -449,14 +449,14 @@ function switchDxTab(tabId){
 }
 
 function tuneDirect(freqKhz, modeStr){
-  cmd('/api/freq?val=' + freqKhz);
-  setTimeout(()=>{
-    if(modeStr){
-      const modeIdx = modeStr==='FM'?0 : (modeStr==='AM'?1 : (modeStr==='USB'?2 : 3));
+  cmd('/api/tune?khz=' + freqKhz);
+  if(modeStr){
+    setTimeout(function(){
+      var modeIdx = modeStr==='FM'?0 : (modeStr==='AM'?1 : (modeStr==='USB'?2 : 3));
       cmd('/api/mode?idx=' + modeIdx);
-    }
-  }, 250);
-  toast('Tuned to ' + freqKhz + ' kHz ' + (modeStr||''));
+    }, 250);
+  }
+  toast('Tuning to ' + freqKhz + ' kHz ' + (modeStr||''));
 }
 
 // Station identification database & live query

@@ -431,6 +431,11 @@ static void webInit()
       freqHz = (uint32_t)(request->getParam("khz")->value().toFloat() * 1000.0f);
     else if(request->hasParam("mhz"))
       freqHz = (uint32_t)(request->getParam("mhz")->value().toFloat() * 1000000.0f);
+    else if(request->hasParam("val"))
+    {
+      float v = request->getParam("val")->value().toFloat();
+      freqHz = (v > 200.0f) ? (uint32_t)(v * 1000.0f) : (uint32_t)(v * 1000000.0f);
+    }
 
     if(freqHz > 0)
     {
@@ -467,6 +472,37 @@ static void webInit()
       }
     }
     request->send(400, "application/json", "{\"status\":\"error\",\"msg\":\"Out of band\"}");
+  });
+
+  // REST API: Freq alias
+  server.on("/api/freq", HTTP_ANY, [] (AsyncWebServerRequest *request) {
+    if(request->hasParam("val"))
+    {
+      float v = request->getParam("val")->value().toFloat();
+      uint32_t freqHz = (v > 200.0f) ? (uint32_t)(v * 1000.0f) : (uint32_t)(v * 1000000.0f);
+      Band *curBand = getCurrentBand();
+      uint16_t targetFreq = freqFromHz(freqHz, currentMode);
+      int targetBfo = isSSB() ? bfoFromHz(freqHz) : 0;
+      int targetBand = -1;
+      if(isFreqInBand(curBand, targetFreq)) targetBand = bandIdx;
+      else {
+        for(int i = 0; i < getTotalBands(); i++) {
+          if(isFreqInBand(&bands[i], targetFreq)) { targetBand = i; break; }
+        }
+      }
+      if(targetBand >= 0) {
+        if(targetBand != bandIdx) selectBand(targetBand);
+        updateFrequency(targetFreq, true);
+        if(isSSB()) updateBFO(targetBfo, true);
+        clearStationInfo();
+        identifyFrequency(currentFrequency + currentBFO / 1000);
+        prefsRequestSave(SAVE_CUR_BAND);
+        webNeedRedraw = true;
+        request->send(200, "application/json", "{\"status\":\"ok\"}");
+        return;
+      }
+    }
+    request->send(400, "application/json", "{\"status\":\"error\"}");
   });
 
   // REST API: Step Tune
@@ -601,6 +637,37 @@ static void webInit()
       webNeedRedraw = true;
       request->send(200, "application/json", "{\"status\":\"ok\"}");
       return;
+    }
+    request->send(400, "application/json", "{\"status\":\"error\"}");
+  });
+
+  // REST API: Freq alias
+  server.on("/api/freq", HTTP_ANY, [] (AsyncWebServerRequest *request) {
+    if(request->hasParam("val"))
+    {
+      float v = request->getParam("val")->value().toFloat();
+      uint32_t freqHz = (v > 200.0f) ? (uint32_t)(v * 1000.0f) : (uint32_t)(v * 1000000.0f);
+      Band *curBand = getCurrentBand();
+      uint16_t targetFreq = freqFromHz(freqHz, currentMode);
+      int targetBfo = isSSB() ? bfoFromHz(freqHz) : 0;
+      int targetBand = -1;
+      if(isFreqInBand(curBand, targetFreq)) targetBand = bandIdx;
+      else {
+        for(int i = 0; i < getTotalBands(); i++) {
+          if(isFreqInBand(&bands[i], targetFreq)) { targetBand = i; break; }
+        }
+      }
+      if(targetBand >= 0) {
+        if(targetBand != bandIdx) selectBand(targetBand);
+        updateFrequency(targetFreq, true);
+        if(isSSB()) updateBFO(targetBfo, true);
+        clearStationInfo();
+        identifyFrequency(currentFrequency + currentBFO / 1000);
+        prefsRequestSave(SAVE_CUR_BAND);
+        webNeedRedraw = true;
+        request->send(200, "application/json", "{\"status\":\"ok\"}");
+        return;
+      }
     }
     request->send(400, "application/json", "{\"status\":\"error\"}");
   });
