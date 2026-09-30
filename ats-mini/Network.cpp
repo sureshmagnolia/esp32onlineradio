@@ -5,6 +5,7 @@
 #include "Menu.h"
 #include "Draw.h"
 #include "Splash.h"
+#include "EIBI.h"
 #include "WebRemote.h"
 
 #include <WiFi.h>
@@ -650,6 +651,31 @@ static void webInit()
       webNeedRedraw = true;
     }
     request->send(200, "application/json", "{\"status\":\"ok\"}");
+  });
+
+  // REST API: EiBi Query for DXing
+  server.on("/api/eibi", HTTP_ANY, [] (AsyncWebServerRequest *request) {
+    uint16_t f = currentFrequency + currentBFO / 1000;
+    if(request->hasParam("freq")) f = request->getParam("freq")->value().toInt();
+    uint8_t h = 0, m = 0;
+    clockGetHM(&h, &m);
+    size_t offset = 0;
+    const StationSchedule *sched = eibiLookup(f, h, m, &offset);
+    String json = "{\"status\":\"ok\",\"freq\":" + String(f) + ",\"available\":" + String(eibiAvailable() ? "true" : "false");
+    if(sched)
+    {
+      String name = sched->name;
+      name.replace('"', '\'');
+      json += ",\"match\":true,\"name\":\"" + name + "\"";
+      json += ",\"start\":\"" + String(sched->start_h) + ":" + (sched->start_m < 10 ? "0" : "") + String(sched->start_m) + "\"";
+      json += ",\"end\":\"" + String(sched->end_h) + ":" + (sched->end_m < 10 ? "0" : "") + String(sched->end_m) + "\"";
+    }
+    else
+    {
+      json += ",\"match\":false";
+    }
+    json += "}";
+    request->send(200, "application/json", json);
   });
 
   // REST API: Time & Timezone sync

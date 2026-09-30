@@ -45,6 +45,25 @@ header{display:flex;justify-content:space-between;align-items:center;padding:8px
 .s-seg.on-r{background:var(--red);box-shadow:0 0 4px var(--red)}
 .smeter-labels{display:flex;justify-content:space-between;font-size:9px;color:var(--sub);font-family:monospace}
 .smeter-readout{display:flex;justify-content:space-between;font-size:11px;color:var(--sub);margin-top:3px}
+
+/* DXing Suite Styles */
+.dx-tabs{display:flex;gap:4px;margin-bottom:8px;overflow-x:auto;scrollbar-width:none}
+.dx-tabs::-webkit-scrollbar{display:none}
+.dx-tab{flex:1;min-width:70px;padding:7px 4px;font-size:11px;font-weight:700;border-radius:6px;background:var(--card2);border:1px solid var(--border);color:var(--sub);cursor:pointer;text-align:center;transition:all 0.15s}
+.dx-tab.active{background:rgba(0,210,255,0.25);color:var(--cyan);border-color:var(--cyan);box-shadow:0 0 8px rgba(0,210,255,0.3)}
+.dx-panel{display:none;background:rgba(15,23,42,0.6);border-radius:8px;padding:8px;border:1px solid rgba(255,255,255,0.06)}
+.dx-panel.active{display:block}
+.dx-chip{display:inline-flex;align-items:center;justify-content:center;background:var(--card2);border:1px solid var(--border);color:#e2e8f0;padding:6px 10px;border-radius:6px;font-size:11px;font-family:monospace;cursor:pointer;transition:all 0.15s;margin:2px}
+.dx-chip:hover,.dx-chip:active{background:rgba(0,210,255,0.2);border-color:var(--cyan);color:#fff}
+.dx-sec-title{font-size:11px;font-weight:700;color:var(--amber);margin:8px 0 4px;text-transform:uppercase;letter-spacing:0.5px}
+.dx-log-table{width:100%;border-collapse:collapse;font-size:11px;margin-top:6px}
+.dx-log-table th{background:#0f172a;color:var(--sub);padding:5px 4px;text-align:left;border-bottom:1px solid var(--border)}
+.dx-log-table td{padding:5px 4px;border-bottom:1px solid rgba(255,255,255,0.05);color:var(--text)}
+.dx-weather-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:6px;margin-bottom:8px}
+.dx-weather-box{background:var(--card2);border:1px solid var(--border);border-radius:8px;padding:8px;text-align:center}
+.dx-weather-val{font-size:18px;font-weight:800;color:var(--cyan);font-family:monospace}
+.dx-weather-lbl{font-size:10px;color:var(--sub);margin-top:2px}
+
 .card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:10px;margin-bottom:8px}
 .grid-2{display:grid;grid-template-columns:1fr 1fr;gap:6px}
 .grid-4{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
@@ -246,6 +265,205 @@ input[type=text],input[type=password]{width:100%;padding:8px;background:#0d1424;
 let state = {}, bandsData = [], polling = true, bfoTimer = null, volTimer = null;
 function toast(msg){const t=document.getElementById('toast');t.innerText=msg;t.style.display='block';setTimeout(()=>t.style.display='none',2000)}
 function cmd(url){fetch(url).then(r=>r.json()).then(d=>{if(d.status==='ok')fetchStatus()}).catch(e=>console.error(e))}
+
+// --- DXing Suite Logic ---
+let dxSuiteOpen = true;
+let dxLogs = JSON.parse(localStorage.getItem('ats_mini_dx_logs') || '[]');
+
+function toggleDxSuite(){
+  dxSuiteOpen = !dxSuiteOpen;
+  document.getElementById('dx-suite-content').style.display = dxSuiteOpen ? 'block' : 'none';
+  document.getElementById('btn-dx-toggle').innerText = dxSuiteOpen ? 'Collapse ?' : 'Expand ?';
+}
+
+function switchDxTab(tabId){
+  document.querySelectorAll('.dx-tab').forEach(t=>t.classList.remove('active'));
+  document.querySelectorAll('.dx-panel').forEach(p=>p.classList.remove('active'));
+  const btn = event.target;
+  if(btn) btn.classList.add('active');
+  const target = document.getElementById('dx-tab-' + tabId);
+  if(target) target.classList.add('active');
+  if(tabId === 'logbook') renderDxLog();
+  if(tabId === 'station-id') checkLiveStation();
+}
+
+function tuneDirect(freqKhz, modeStr){
+  cmd('/api/freq?val=' + freqKhz);
+  setTimeout(()=>{
+    if(modeStr){
+      const modeIdx = modeStr==='FM'?0 : (modeStr==='AM'?1 : (modeStr==='USB'?2 : 3));
+      cmd('/api/mode?idx=' + modeIdx);
+    }
+  }, 250);
+  toast('Tuned to ' + freqKhz + ' kHz ' + (modeStr||''));
+}
+
+// Station identification database & live query
+const swRegistry = [
+  {freq:15000, name:"WWV Fort Collins", loc:"USA", pwr:"10 kW", lang:"Time/Standard"},
+  {freq:10000, name:"WWV Fort Collins", loc:"USA", pwr:"10 kW", lang:"Time/Standard"},
+  {freq:5000, name:"WWV Fort Collins", loc:"USA", pwr:"10 kW", lang:"Time/Standard"},
+  {freq:20000, name:"WWV Fort Collins", loc:"USA", pwr:"2.5 kW", lang:"Time/Standard"},
+  {freq:3330, name:"CHU Ottawa", loc:"Canada", pwr:"3 kW", lang:"Bilingual Time"},
+  {freq:7850, name:"CHU Ottawa", loc:"Canada", pwr:"10 kW", lang:"Bilingual Time"},
+  {freq:14670, name:"CHU Ottawa", loc:"Canada", pwr:"3 kW", lang:"Bilingual Time"},
+  {freq:11850, name:"BBC World Service", loc:"Woofferton, UK", pwr:"250 kW", lang:"English"},
+  {freq:9740, name:"BBC World Service", loc:"Ascension Island", pwr:"250 kW", lang:"English/Swahili"},
+  {freq:11590, name:"All India Radio", loc:"Bengaluru, India", pwr:"500 kW", lang:"Hindi / External"},
+  {freq:9425, name:"Voice of America", loc:"Greenville, NC", pwr:"250 kW", lang:"English / Persian"},
+  {freq:11780, name:"Voice of America", loc:"Sao Tome", pwr:"100 kW", lang:"French / English"},
+  {freq:9580, name:"Deutsche Welle", loc:"Issoudun, France", pwr:"250 kW", lang:"Amharic / English"},
+  {freq:13630, name:"China Radio Intl", loc:"Kashi, China", pwr:"500 kW", lang:"Multi-language"},
+  {freq:11880, name:"NHK World Radio Japan", loc:"Yamata, Japan", pwr:"300 kW", lang:"Japanese / English"},
+  {freq:9600, name:"Radio Romania Intl", loc:"Galbeni, Romania", pwr:"300 kW", lang:"English / Romanian"},
+  {freq:4625, name:"UVB-76 (The Buzzer)", loc:"St. Petersburg, Russia", pwr:"10 kW", lang:"Buzzer Marker"},
+  {freq:5505, name:"Shannon VOLMET", loc:"Ballygirreen, Ireland", pwr:"3 kW", lang:"Aviation Weather"},
+  {freq:8957, name:"Shannon VOLMET", loc:"Ballygirreen, Ireland", pwr:"3 kW", lang:"Aviation Weather"},
+  {freq:13264, name:"Shannon VOLMET", loc:"Ballygirreen, Ireland", pwr:"3 kW", lang:"Aviation Weather"},
+  {freq:5450, name:"RAF Military VOLMET", loc:"Inskip, UK", pwr:"10 kW", lang:"Military Weather"},
+  {freq:6604, name:"New York VOLMET", loc:"Brentwood, NY", pwr:"5 kW", lang:"Aviation Weather"},
+  {freq:5598, name:"North Atlantic ATC (NAT-A)", loc:"Shanwick / Gander", pwr:"10 kW", lang:"Oceanic Air Traffic"},
+  {freq:5616, name:"North Atlantic ATC (NAT-B)", loc:"Shanwick / Gander", pwr:"10 kW", lang:"Oceanic Air Traffic"},
+  {freq:8864, name:"North Atlantic ATC (NAT-A)", loc:"Shanwick / Gander", pwr:"10 kW", lang:"Oceanic Air Traffic"},
+  {freq:8891, name:"North Atlantic ATC (NAT-B)", loc:"Shanwick / Gander", pwr:"10 kW", lang:"Oceanic Air Traffic"},
+  {freq:5634, name:"Indian Ocean ATC", loc:"Mumbai / Colombo", pwr:"5 kW", lang:"Oceanic Air Traffic"},
+  {freq:8879, name:"Indian Ocean ATC", loc:"Mumbai Radio", pwr:"5 kW", lang:"Oceanic Air Traffic"},
+  {freq:10018, name:"Indian Ocean ATC", loc:"Mumbai Radio", pwr:"5 kW", lang:"Oceanic Air Traffic"}
+];
+
+function checkLiveStation(){
+  const f = state.freq || 0;
+  document.getElementById('dx-curr-freq').innerText = f + ' kHz';
+  
+  // 1. Try querying firmware /api/eibi
+  fetch('/api/eibi?freq=' + f).then(r=>r.json()).then(d=>{
+    if(d.match && d.name){
+      document.getElementById('dx-station-match').innerText = d.name;
+      document.getElementById('dx-station-details').innerText = 'EiBi Schedule: ' + d.start + ' - ' + d.end + ' UTC';
+      return;
+    }
+    matchFromRegistry(f);
+  }).catch(()=>{
+    matchFromRegistry(f);
+  });
+}
+
+function matchFromRegistry(f){
+  const found = swRegistry.find(s=>s.freq === f);
+  if(found){
+    document.getElementById('dx-station-match').innerText = found.name;
+    document.getElementById('dx-station-details').innerText = found.loc + ' ? ' + found.lang + ' ? ' + found.pwr;
+  } else {
+    document.getElementById('dx-station-match').innerText = 'Unlisted / Weak Carrier';
+    document.getElementById('dx-station-details').innerText = 'Tune to nearby standard broadcast or utility channel';
+  }
+}
+
+// Logbook functions
+function logCurrentDx(){
+  const now = new Date();
+  const utcStr = now.toISOString().slice(0,19).replace('T',' ') + ' UTC';
+  const freq = state.freq || 0;
+  const mode = state.mode || 'AM';
+  const rssi = state.rssi || 0;
+  const snr = state.snr || 0;
+  const matchElem = document.getElementById('dx-station-match');
+  const stationName = matchElem ? matchElem.innerText : 'Unknown';
+  const rst = document.getElementById('dx-log-rst').value.trim() || '599';
+  const qth = document.getElementById('dx-log-qth').value.trim() || '';
+
+  const entry = {
+    id: Date.now(),
+    utc: utcStr,
+    freq: freq,
+    mode: mode,
+    rssi: rssi,
+    snr: snr,
+    station: stationName,
+    rst: rst,
+    qth: qth
+  };
+
+  dxLogs.unshift(entry);
+  if(dxLogs.length > 200) dxLogs.pop();
+  localStorage.setItem('ats_mini_dx_logs', JSON.stringify(dxLogs));
+  renderDxLog();
+  toast('Signal Logged: ' + freq + ' kHz (' + mode + ')');
+}
+
+function renderDxLog(){
+  const tbody = document.getElementById('dx-log-tbody');
+  if(!tbody) return;
+  if(dxLogs.length === 0){
+    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--sub);padding:12px">No logged DX catches yet.</td></tr>';
+    return;
+  }
+  let h = '';
+  dxLogs.forEach((item, idx)=>{
+    h += '<tr>';
+    h += '<td style="font-family:monospace;font-size:10px">' + item.utc.slice(5,16) + '</td>';
+    h += '<td style="font-family:monospace;font-weight:700;color:var(--cyan)">' + item.freq + '</td>';
+    h += '<td><span class="badge badge-mode ' + item.mode + '" style="font-size:9px;padding:1px 4px">' + item.mode + '</span></td>';
+    h += '<td><b>' + item.station + '</b>' + (item.qth ? ' ('+item.qth+')':'') + '</td>';
+    h += '<td style="font-family:monospace;font-size:10px">' + item.rssi + 'dBuV (' + item.rst + ')</td>';
+    h += '<td><button style="padding:2px 5px;font-size:10px;background:transparent;border:none;color:var(--red)" onclick="delDxLog(' + item.id + ')">?</button></td>';
+    h += '</tr>';
+  });
+  tbody.innerHTML = h;
+}
+
+function delDxLog(id){
+  dxLogs = dxLogs.filter(e=>e.id !== id);
+  localStorage.setItem('ats_mini_dx_logs', JSON.stringify(dxLogs));
+  renderDxLog();
+}
+
+function clearDxLog(){
+  if(!confirm('Clear all logged DX records?')) return;
+  dxLogs = [];
+  localStorage.removeItem('ats_mini_dx_logs');
+  renderDxLog();
+  toast('Logbook cleared');
+}
+
+function exportCsv(){
+  if(dxLogs.length === 0){ toast('Logbook is empty'); return; }
+  let csv = 'UTC Time,Frequency (kHz),Mode,Station Name,RSSI (dBuV),SNR (dB),RST,Notes\n';
+  dxLogs.forEach(e=>{
+    csv += "",,"","",,,"",""\n;
+  });
+  downloadFile(csv, 'ats_mini_dx_log.csv', 'text/csv');
+}
+
+function exportAdif(){
+  if(dxLogs.length === 0){ toast('Logbook is empty'); return; }
+  let adi = 'ADIF Export from ATS-Mini ESP32 Radio\n<EOH>\n';
+  dxLogs.forEach(e=>{
+    const dStr = e.utc.slice(0,10).replace(/-/g,'');
+    const tStr = e.utc.slice(11,16).replace(/:/g,'');
+    const freqMhz = (e.freq / 1000.0).toFixed(4);
+    adi += <QSO_DATE:><TIME_ON:>;
+    adi += <FREQ:><MODE:>;
+    adi += <RST_RCVD:>;
+    if(e.station) adi += <COMMENT:>;
+    adi += <EOR>\n;
+  });
+  downloadFile(adi, 'ats_mini_dx_log.adi', 'text/plain');
+}
+
+function downloadFile(content, fileName, mimeType){
+  const b = new Blob([content], {type: mimeType});
+  const u = URL.createObjectURL(b);
+  const a = document.createElement('a');
+  a.href = u;
+  a.download = fileName;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(u);
+  toast('Downloaded ' + fileName);
+}
+
 function fetchStatus(){
   if(!polling) return;
   fetch('/api/status').then(r=>r.json()).then(d=>{
