@@ -263,6 +263,7 @@ input[type=text],input[type=password]{width:100%;padding:8px;background:#0d1424;
 
 <script>
 
+
 let state = {}, bandsData = [], polling = true, bfoTimer = null, volTimer = null;
 function toast(msg){const t=document.getElementById('toast');t.innerText=msg;t.style.display='block';setTimeout(()=>t.style.display='none',2000)}
 function cmd(url){fetch(url).then(r=>r.json()).then(d=>{if(d.status==='ok')fetchStatus()}).catch(e=>console.error(e))}
@@ -429,38 +430,32 @@ function clearDxLog(){
 
 function exportCsv(){
   if(dxLogs.length === 0){ toast('Logbook is empty'); return; }
-  var csv = 'UTC Time,Frequency (kHz),Mode,Station Name,RSSI (dBuV),SNR (dB),RST,Notes
-';
+  var lines = ['UTC Time,Frequency (kHz),Mode,Station Name,RSSI (dBuV),SNR (dB),RST,Notes'];
   dxLogs.forEach(function(e){
-    csv += '"' + e.utc + '",' + e.freq + ',"' + e.mode + '","' + (e.station||'') + '",' + e.rssi + ',' + e.snr + ',"' + (e.rst||'') + '","' + (e.qth||'') + '"
-';
+    lines.push('"' + e.utc + '",' + e.freq + ',"' + e.mode + '","' + (e.station||'') + '",' + e.rssi + ',' + e.snr + ',"' + (e.rst||'') + '","' + (e.qth||'') + '"');
   });
-  downloadFile(csv, 'ats_mini_dx_log.csv', 'text/csv');
+  downloadFile(lines.join(String.fromCharCode(10)), 'ats_mini_dx_log.csv', 'text/csv');
 }
 
 function exportAdif(){
   if(dxLogs.length === 0){ toast('Logbook is empty'); return; }
-  var adi = 'ADIF Export from ATS-Mini ESP32 Radio
-<EOH>
-';
+  var lines = ['ADIF Export from ATS-Mini ESP32 Radio', '<EOH>'];
   dxLogs.forEach(function(e){
     var dStr = e.utc.slice(0,10).replace(/-/g,'');
     var tStr = e.utc.slice(11,16).replace(/:/g,'');
     var freqMhz = (e.freq / 1000.0).toFixed(4);
-    adi += '<QSO_DATE:' + dStr.length + '>' + dStr;
-    adi += '<TIME_ON:' + tStr.length + '>' + tStr;
-    adi += '<FREQ:' + freqMhz.length + '>' + freqMhz;
-    adi += '<MODE:' + e.mode.length + '>' + e.mode;
     var rstStr = String(e.rst || '599');
-    adi += '<RST_RCVD:' + rstStr.length + '>' + rstStr;
-    if(e.station){
-      var stStr = String(e.station);
-      adi += '<COMMENT:' + stStr.length + '>' + stStr;
-    }
-    adi += '<EOR>
-';
+    var stStr = String(e.station || '');
+    var record = '<QSO_DATE:' + dStr.length + '>' + dStr +
+                 '<TIME_ON:' + tStr.length + '>' + tStr +
+                 '<FREQ:' + freqMhz.length + '>' + freqMhz +
+                 '<MODE:' + e.mode.length + '>' + e.mode +
+                 '<RST_RCVD:' + rstStr.length + '>' + rstStr;
+    if(stStr) record += '<COMMENT:' + stStr.length + '>' + stStr;
+    record += '<EOR>';
+    lines.push(record);
   });
-  downloadFile(adi, 'ats_mini_dx_log.adi', 'text/plain');
+  downloadFile(lines.join(String.fromCharCode(10)), 'ats_mini_dx_log.adi', 'text/plain');
 }
 
 function downloadFile(content, fileName, mimeType){
@@ -666,6 +661,7 @@ function loadBandwidths(){
 setInterval(fetchStatus, 700);
 setTimeout(()=>{fetchStatus();loadBands();loadBandwidths();const now=Math.floor(Date.now()/1000);const tz=-new Date().getTimezoneOffset();fetch('/api/time?epoch='+now+'&minutes='+tz).catch(()=>{});}, 200);
 setInterval(loadBandwidths, 2500);
+
 
 </script>
 </body>
