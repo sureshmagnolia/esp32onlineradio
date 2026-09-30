@@ -7,12 +7,12 @@
 
 #define RECEIVER_DESC  "ESP32-SI4732 Receiver"
 #define RECEIVER_NAME  "ATS-Mini"
-#define FIRMWARE_URL   "https://github.com/esp32-si4732/ats-mini"
-#define MANUAL_URL     "https://esp32-si4732.github.io/ats-mini/manual.html"
-#define AUTHORS_LINE1  "Authors: PU2CLR (Ricardo Caratti),"
-#define AUTHORS_LINE2  "Volos Projects, Ralph Xavier, Sunnygold,"
-#define AUTHORS_LINE3  "Goshante, G8PTN (Dave), R9UCL (Max Arnold),"
-#define AUTHORS_LINE4  "Marat Fayzullin"
+#define FIRMWARE_URL   "https://github.com/sureshmagnolia/esp32onlineradio"
+#define MANUAL_URL     "https://github.com/sureshmagnolia/esp32onlineradio"
+#define AUTHORS_LINE1  "ESP32-S3 SI4732 DSP Radio"
+#define AUTHORS_LINE2  "Enhanced Edition with Web Remote & DXing"
+#define AUTHORS_LINE3  "SI4735 Library: Ricardo Caratti (PU2CLR)"
+#define AUTHORS_LINE4  "https://github.com/sureshmagnolia/esp32onlineradio"
 
 #define VER_APP        238  // Firmware version
 #define VER_SETTINGS   71   // Settings version
