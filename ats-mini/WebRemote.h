@@ -217,8 +217,13 @@ input[type=text],input[type=password]{width:100%;padding:8px;background:#0d1424;
     <div style="display:flex;align-items:center;gap:4px">
       <span style="font-size:11px;color:var(--sub)">SQ:</span>
       <input type="range" class="slider" id="sq-slider" min="0" max="100" value="0" onchange="cmd('/api/squelch?val='+this.value)">
-      <span class="val-badge" id="sq-val" style="min-width:26px">0</span>
+      <span class="val-badge" id="sq-val" style="min-width:24px">0</span>
+      <button style="padding:3px 6px;font-size:10px;min-width:30px;line-height:1" title="Turn Squelch Off" onclick="cmd('/api/squelch_off')">OFF</button>
     </div>
+  </div>
+  <div id="sq-alert" style="display:none;margin-top:8px;padding:6px 10px;background:rgba(239,68,68,0.18);border:1px solid #ef4444;border-radius:6px;font-size:12px;color:#fca5a5;align-items:center;justify-content:space-between">
+    <span>🔇 Audio muted by Squelch (Vol/sq)</span>
+    <button style="padding:3px 8px;font-size:11px;background:#ef4444;color:#fff;border:none;border-radius:4px;cursor:pointer" onclick="cmd('/api/squelch_off')">Unsquelch</button>
   </div>
 </div>
 
@@ -673,6 +678,10 @@ function renderStatus(){
   document.getElementById('btn-agc').innerText = state.agc === 0 ? 'AGC: Auto' : ('ATTN: -' + state.agc + 'dB');
   document.getElementById('sq-slider').value = state.sq || 0;
   document.getElementById('sq-val').innerText = state.sq || 0;
+  var sqAlert = document.getElementById('sq-alert');
+  if(sqAlert){
+    sqAlert.style.display = state.squelched ? 'flex' : 'none';
+  }
   renderSMeter(state.rssi, state.snr);
 }
 function renderSMeter(rssi, snr){

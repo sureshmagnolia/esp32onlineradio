@@ -381,6 +381,7 @@ static String getStatusJson()
   json += "\"bat_pct\":" + String(pct) + ",";
   json += "\"vol\":" + String(volume) + ",";
   json += "\"muted\":" + String(muteOn(MUTE_MAIN) ? "true" : "false") + ",";
+  json += "\"squelched\":" + String(muteOn(MUTE_SQUELCH) ? "true" : "false") + ",";
   json += "\"sq\":" + String(currentSquelch[currentMode] & 0x7f) + ",";
   json += "\"bw_idx\":" + String(bands[bandIdx].bandwidthIdx) + ",";
   json += "\"bw\":\"" + String(getCurrentBandwidth()->desc) + "\",";
@@ -712,12 +713,38 @@ static void webInit()
     if(request->hasParam("val"))
     {
       int val = constrain(request->getParam("val")->value().toInt(), 0, 100);
-      uint8_t squelchParam = currentSquelch[currentMode] & 0x80;
-      currentSquelch[currentMode] = squelchParam | (val & 0x7f);
+      bool resetAll = request->hasParam("all") || (val == 0);
+      if(resetAll)
+      {
+        for(int m = 0; m < 4; m++)
+        {
+          uint8_t squelchParam = currentSquelch[m] & 0x80;
+          currentSquelch[m] = squelchParam | (val & 0x7f);
+        }
+      }
+      else
+      {
+        uint8_t squelchParam = currentSquelch[currentMode] & 0x80;
+        currentSquelch[currentMode] = squelchParam | (val & 0x7f);
+      }
+      if(val == 0 && muteOn(MUTE_SQUELCH))
+      {
+        muteOn(MUTE_SQUELCH, false);
+      }
       prefsRequestSave(SAVE_SETTINGS);
       webNeedRedraw = true;
     }
-    request->send(200, "application/json", "{\"status\":\"ok\"}");
+    request->send(200, "application/json", "{\"status\":\"ok\",\"sq\":" + String(currentSquelch[currentMode] & 0x7f) + ",\"squelched\":" + String(muteOn(MUTE_SQUELCH) ? "true" : "false") + "}");
+  });
+
+  server.on("/api/squelch_off", HTTP_ANY, [] (AsyncWebServerRequest *request) {
+    for(int m = 0; m < 4; m++)
+      currentSquelch[m] &= 0x80;
+    if(muteOn(MUTE_SQUELCH))
+      muteOn(MUTE_SQUELCH, false);
+    prefsRequestSave(SAVE_SETTINGS);
+    webNeedRedraw = true;
+    request->send(200, "application/json", "{\"status\":\"ok\",\"sq\":0,\"squelched\":false}");
   });
 
   // REST API: EiBi Query for DXing
