@@ -177,7 +177,10 @@ input[type=text],input[type=password]{width:100%;padding:8px;background:#0d1424;
       <button class="key-btn" onclick="kpNum('0')">0</button>
       <button class="key-btn" onclick="kpDel()">⌫</button>
     </div>
-    <button class="btn-accent" style="width:100%;margin-top:6px;padding:12px;font-size:15px" onclick="kpTune()">🎯 TUNE FREQUENCY</button>
+    <div class="grid-2" style="margin-top:6px;gap:6px">
+      <button class="btn-accent" style="padding:10px;font-size:14px;background:#1e40af;color:#fff;border:1px solid #3b82f6" onclick="kpTuneUnit('khz')">▶ Tune kHz</button>
+      <button class="btn-accent" style="padding:10px;font-size:14px;background:#065f46;color:#fff;border:1px solid #10b981" onclick="kpTuneUnit('mhz')">▶ Tune MHz</button>
+    </div>
   </div>
   <div id="bfo-panel" style="display:none;margin-top:8px;background:var(--card2);padding:8px;border-radius:8px">
     <div class="slider-row">
@@ -721,13 +724,19 @@ function toggleBfo(){
 function kpNum(n){document.getElementById('keypad-input').value += n}
 function kpDel(){const el=document.getElementById('keypad-input');el.value = el.value.slice(0,-1)}
 function kpClear(){document.getElementById('keypad-input').value = ''}
+function kpTuneUnit(unit){
+  const el = document.getElementById('keypad-input');
+  const v = parseFloat(el.value);
+  if(!v) return;
+  let url = (unit === 'khz') ? ('/api/tune?khz=' + v) : ('/api/tune?mhz=' + v);
+  cmd(url);
+  toggleKeypad();
+  toast('Tuning to ' + v + ' ' + unit.toUpperCase());
+}
 function kpTune(){
   const v = parseFloat(document.getElementById('keypad-input').value);
   if(!v) return;
-  let url = v > 200 ? ('/api/tune?khz=' + v) : ('/api/tune?mhz=' + v);
-  cmd(url);
-  toggleKeypad();
-  toast('Tuning to ' + v);
+  kpTuneUnit(v > 200 ? 'khz' : 'mhz');
 }
 function showTab(idx){
   document.querySelectorAll('.nav-tab').forEach((t,i)=>t.classList.toggle('active',i===idx));
