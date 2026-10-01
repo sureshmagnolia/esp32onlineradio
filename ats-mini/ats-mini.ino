@@ -584,7 +584,83 @@ bool doSeek(int16_t enc, int16_t enca)
   {
     if(isSSB())
     {
-      updateBFO(currentBFO + enca * getCurrentStep()->step, true);
+      Band *b = getCurrentBand();
+      int minFreq = b ? b->minimumFreq : 100;
+      int maxFreq = b ? b->maximumFreq : 30000;
+      int dir = (enc != 0) ? (enc > 0 ? 1 : -1) : (enca > 0 ? 1 : -1);
+      if(dir == 0) dir = 1;
+
+      // Determine step in kHz for seeking
+      uint32_t stepHz = getCurrentStep()->step;
+      int stepKhz = (stepHz >= 1000) ? (stepHz / 1000) : 1;
+      if(stepKhz < 1) stepKhz = 1;
+
+      // Clear stale parameters
+      clearStationInfo();
+      rssi = snr = 0;
+      consumeAbortPending();
+
+      // Squelch threshold or default sensitivity
+      uint8_t sqVal = currentSquelch[currentMode] & 0x7f;
+      bool useSnr = (currentSquelch[currentMode] & 0x80) != 0;
+
+      int curF = currentFrequency;
+      if(dir > 0 && curF >= maxFreq) curF = minFreq - stepKhz;
+      else if(dir < 0 && curF <= minFreq) curF = maxFreq + stepKhz;
+
+      // Scan up to 50 steps (or to band edge) per seek command
+      int maxSteps = 50;
+      for(int i = 0; i < maxSteps; i++)
+      {
+        curF += dir * stepKhz;
+        if(dir > 0 && curF >= maxFreq)
+        {
+          curF = maxFreq;
+          showFrequencySeek(curF);
+          break;
+        }
+        else if(dir < 0 && curF <= minFreq)
+        {
+          curF = minFreq;
+          showFrequencySeek(curF);
+          break;
+        }
+
+        if(consumeAbortPending()) break;
+
+        rx.setFrequency(curF);
+        delay(12);
+        rx.getCurrentReceivedSignalQuality();
+        int sRssi = rx.getCurrentRSSI();
+        int sSnr = rx.getCurrentSNR();
+
+        if((i % 3) == 0)
+        {
+          showFrequencySeek(curF);
+        }
+
+        bool hit = false;
+        if(sqVal)
+        {
+          hit = useSnr ? (sSnr >= sqVal) : (sRssi >= sqVal);
+        }
+        else
+        {
+          // In SSB mode:
+          // A detectable transmission has SNR >= 2 dB or RSSI >= 12 dBuV
+          hit = (sSnr >= 2) || (sRssi >= 12);
+        }
+
+        if(hit)
+        {
+          rssi = sRssi;
+          snr = sSnr;
+          break;
+        }
+      }
+
+      currentBFO = 0;
+      updateFrequency(curF, false);
     }
     else
     {

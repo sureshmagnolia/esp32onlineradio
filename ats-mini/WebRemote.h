@@ -150,9 +150,9 @@ input[type=text],input[type=password]{width:100%;padding:8px;background:#0d1424;
     <button class="btn-tune" onclick="cmd('/api/step?dir=1')">+Step ▶</button>
     <button class="btn-tune" onclick="cmd('/api/step?delta=10')">+10 ▶▶</button>
   </div>
-  <div class="grid-2">
-    <button onclick="cmd('/api/seek?dir=-1')">🔍 Seek Down</button>
-    <button onclick="cmd('/api/seek?dir=1')">Seek Up 🔍</button>
+    <div class="grid-2">
+    <button onclick="cmd('/api/seek?dir=-1');toast('Seeking Down...')">Seek Down</button>
+    <button onclick="cmd('/api/seek?dir=1');toast('Seeking Up...')">Seek Up</button>
   </div>
   <div class="grid-2" style="margin-top:6px">
     <button id="btn-keypad-toggle" onclick="toggleKeypad()">🔢 Direct Frequency Keypad</button>
