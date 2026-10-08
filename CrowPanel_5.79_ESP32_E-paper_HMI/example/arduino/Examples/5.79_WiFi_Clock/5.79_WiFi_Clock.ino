@@ -54,10 +54,15 @@ int getGlyphWidth(const ClockGlyph* font, char c) {
 
 void drawString(int x, int y, const ClockGlyph* font, const char* str, int spacing, uint16_t color) {
   int curX = x;
+  int spaceW = 12;
+  if (font == ui_glyphs) spaceW = 7;
+  else if (font == header_glyphs) spaceW = 12;
+  else if (font == text_glyphs) spaceW = 14;
+
   while (*str) {
     char c = *str++;
     if (c == ' ') {
-      curX += 16;
+      curX += spaceW;
     } else {
       drawGlyph(curX, y, font, c, color);
       curX += getGlyphWidth(font, c) + spacing;
@@ -82,6 +87,41 @@ void drawColon(int x, int startY) {
         }
       }
     }
+  }
+}
+
+void renderStartupFrame(const char* wifiStatus, const char* ntpStatus, const char* footerMsg) {
+  Paint_NewImage(ImageBW, EPD_W, EPD_H, Rotation, WHITE);
+  Paint_Clear(WHITE);
+
+  // Title Header
+  drawString(60, 30, header_glyphs, "CROWPANEL 5.79\" E-PAPER CLOCK", 2, BLACK);
+
+  // Header divider line (thickness: 2px)
+  for (int x = 60; x <= 732; x++) {
+    Paint_SetPixel(x, 78, BLACK);
+    Paint_SetPixel(x, 79, BLACK);
+  }
+
+  // Step 1: System Boot & Hardware
+  drawString(60, 100, ui_glyphs, "> SYSTEM BOOT & HARDWARE INITIALIZATION... OK", 1, BLACK);
+
+  // Step 2: WiFi Connection Status
+  if (wifiStatus && strlen(wifiStatus) > 0) {
+    drawString(60, 138, ui_glyphs, wifiStatus, 1, BLACK);
+  }
+
+  // Step 3: NTP Time Sync Status
+  if (ntpStatus && strlen(ntpStatus) > 0) {
+    drawString(60, 176, ui_glyphs, ntpStatus, 1, BLACK);
+  }
+
+  // Footer divider line & Message
+  for (int x = 60; x <= 732; x++) {
+    Paint_SetPixel(x, 220, BLACK);
+  }
+  if (footerMsg && strlen(footerMsg) > 0) {
+    drawString(60, 230, ui_glyphs, footerMsg, 1, BLACK);
   }
 }
 
@@ -125,7 +165,7 @@ void renderClockImage(const struct tm& timeinfo) {
 
   // 2. Vertical Divider Line
   int divX = 530;
-  for (int y = 24; y <= 248; y++) {
+  for (int y = 24; y <= 252; y++) {
     Paint_SetPixel(divX, y, BLACK);
     Paint_SetPixel(divX + 1, y, BLACK);
   }
@@ -135,21 +175,60 @@ void renderClockImage(const struct tm& timeinfo) {
   drawString(rx, 26, ampm_glyphs, ampmStr, 4, BLACK);
   drawString(rx, 114, text_glyphs, dayStr, 3, BLACK);
   drawString(rx, 186, text_glyphs, dateStr, 3, BLACK);
+
+  // 4. Subtle Connection Status Indicator under Date
+  if (WiFi.status() == WL_CONNECTED) {
+    // Solid dot indicator
+    int dotX = rx + 3;
+    int dotY = 242;
+    int r = 3;
+    for (int dy = -r; dy <= r; dy++) {
+      for (int dx = -r; dx <= r; dx++) {
+        if (dx * dx + dy * dy <= r * r) {
+          Paint_SetPixel(dotX + dx, dotY + dy, BLACK);
+        }
+      }
+    }
+    char statusBuf[40];
+    snprintf(statusBuf, sizeof(statusBuf), "WIFI: %s", WiFi.SSID().c_str());
+    drawString(rx + 14, 233, ui_glyphs, statusBuf, 1, BLACK);
+  } else {
+    // Hollow dot indicator
+    int dotX = rx + 3;
+    int dotY = 242;
+    int r = 3;
+    for (int dy = -r; dy <= r; dy++) {
+      for (int dx = -r; dx <= r; dx++) {
+        int d2 = dx * dx + dy * dy;
+        if (d2 <= r * r && d2 >= (r - 1) * (r - 1)) {
+          Paint_SetPixel(dotX + dx, dotY + dy, BLACK);
+        }
+      }
+    }
+    drawString(rx + 14, 233, ui_glyphs, "OFFLINE", 1, BLACK);
+  }
 }
 
-void syncNtp() {
+bool syncNtpStartup(struct tm* outTime) {
   Serial.println("Configuring NTP...");
   configTime(gmtOffset_sec, daylightOffset_sec, "time.google.com", "asia.pool.ntp.org", "pool.ntp.org");
-  struct tm timeinfo;
   for (int i = 0; i < 30; i++) {
-    if (getLocalTime(&timeinfo, 500)) {
-      Serial.printf("NTP synced: %02d:%02d:%02d\n", timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec);
+    if (getLocalTime(outTime, 500)) {
+      Serial.printf("NTP synced: %02d:%02d:%02d\n", outTime->tm_hour, outTime->tm_min, outTime->tm_sec);
       lastNtpSync = millis();
-      return;
+      return true;
     }
     delay(200);
   }
   Serial.println("NTP sync timeout");
+  return false;
+}
+
+void syncNtpBackground() {
+  struct tm timeinfo;
+  if (getLocalTime(&timeinfo, 500)) {
+    lastNtpSync = millis();
+  }
 }
 
 void setup() {
@@ -173,40 +252,94 @@ void setup() {
   EPD_Update();
   EPD_Clear_R26A6H();
 
+  // Show Initial Startup Screen: Hardware initialized & starting WiFi
+  renderStartupFrame("> CONNECTING TO WI-FI (suresh)...", "", "INITIALIZING SYSTEM & NETWORK...");
+  EPD_Display(ImageBW);
+  EPD_PartUpdate();
+  EPD_UpdatePrev(ImageBW);
+
   // Connect to WiFi
   wifiMulti.addAP("suresh", "alangium");
   wifiMulti.addAP("suresh2.4gExt", "alangium");
 
   Serial.println("Connecting to WiFi...");
   int wifiAttempts = 0;
-  while (wifiMulti.run() != WL_CONNECTED && wifiAttempts < 20) {
-    delay(500);
+  while (wifiMulti.run() != WL_CONNECTED && wifiAttempts < 25) {
+    delay(400);
     wifiAttempts++;
   }
 
+  char wifiStatus[90];
+  char ntpStatus[90];
+  struct tm timeinfo;
+  bool timeValid = false;
+
   if (WiFi.status() == WL_CONNECTED) {
     Serial.println("WiFi Connected!");
-    syncNtp();
+    snprintf(wifiStatus, sizeof(wifiStatus), "> WI-FI CONNECTED: %s [%s]", WiFi.SSID().c_str(), WiFi.localIP().toString().c_str());
+    
+    // Update screen with WiFi connected & now syncing NTP
+    renderStartupFrame(wifiStatus, "> SYNCING NTP TIME (UTC+5:30 IST)...", "SYNCHRONIZING CLOCK WITH ATOMIC TIME...");
+    EPD_Display(ImageBW);
+    EPD_PartUpdate();
+    EPD_UpdatePrev(ImageBW);
+
+    timeValid = syncNtpStartup(&timeinfo);
+    if (timeValid) {
+      int hour12 = timeinfo.tm_hour % 12;
+      if (hour12 == 0) hour12 = 12;
+      const char* ampm = (timeinfo.tm_hour >= 12) ? "PM" : "AM";
+      snprintf(ntpStatus, sizeof(ntpStatus), "> NTP TIME SYNCED: %02d:%02d %s (IST)... OK", hour12, timeinfo.tm_min, ampm);
+      renderStartupFrame(wifiStatus, ntpStatus, "READY! LAUNCHING DIGITAL CLOCK INTERFACE...");
+    } else {
+      snprintf(ntpStatus, sizeof(ntpStatus), "> NTP SYNC TIMEOUT (RETRYING IN BACKGROUND)");
+      renderStartupFrame(wifiStatus, ntpStatus, "STARTING CLOCK...");
+    }
   } else {
     Serial.println("WiFi connect failed, will retry in background");
+    snprintf(wifiStatus, sizeof(wifiStatus), "> WI-FI CONNECTION FAILED (RETRYING IN BACKGROUND)");
+    snprintf(ntpStatus, sizeof(ntpStatus), "> USING BACKUP TIME");
+    renderStartupFrame(wifiStatus, ntpStatus, "STARTING CLOCK...");
   }
 
-  // Get current time or fallback
-  struct tm timeinfo;
-  if (!getLocalTime(&timeinfo, 1000)) {
-    // If NTP hasn't responded yet, fallback to sensible placeholder
-    timeinfo.tm_hour = 19;
-    timeinfo.tm_min = 55;
-    timeinfo.tm_sec = 0;
-    timeinfo.tm_mday = 8;
-    timeinfo.tm_mon = 9;
-    timeinfo.tm_year = 126; // 2026
-    timeinfo.tm_wday = 4;   // Thursday
+  // Final startup frame update
+  EPD_Display(ImageBW);
+  EPD_PartUpdate();
+  EPD_UpdatePrev(ImageBW);
+
+  // Allow user to view the completed startup checklist
+  delay(2000);
+
+  if (!timeValid) {
+    if (!getLocalTime(&timeinfo, 1000)) {
+      // Fallback
+      timeinfo.tm_hour = 20;
+      timeinfo.tm_min = 45;
+      timeinfo.tm_sec = 0;
+      timeinfo.tm_mday = 8;
+      timeinfo.tm_mon = 9;
+      timeinfo.tm_year = 126; // 2026
+      timeinfo.tm_wday = 4;   // Thursday
+    }
   }
 
   currentMinute = timeinfo.tm_min;
 
-  // Render and perform clean partial update against cleared 0x26 white buffer
+  // Clean transition to main clock:
+  // 1. Actively erase all startup checklist pixels to white via partial update
+  Paint_Clear(WHITE);
+  EPD_Display(ImageBW);
+  EPD_PartUpdate();
+  EPD_UpdatePrev(ImageBW);
+  delay(150);
+
+  // 2. Full hardware reset & global clear to eliminate all micro-capsule ghosting
+  EPD_FastMode1Init();
+  EPD_Display_Clear();
+  EPD_Update();
+  EPD_Clear_R26A6H();
+
+  // 3. Render main clock and sync to differential memory
   renderClockImage(timeinfo);
   EPD_Display(ImageBW);
   EPD_PartUpdate();
@@ -218,7 +351,7 @@ void loop() {
   // Check and maintain WiFi connection
   if (wifiMulti.run() == WL_CONNECTED) {
     if (millis() - lastNtpSync > 3600000 || lastNtpSync == 0) {
-      syncNtp();
+      syncNtpBackground();
     }
   }
 
