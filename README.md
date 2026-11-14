@@ -1,64 +1,90 @@
-# 📻 Elecrow CrowPanel 1.28" ESP32-S3 HMI Rotary Studio Radio
-*Branch: `GoldRoundDisplay` — Gold Bezel Round Display Internet Radio*
+# 📻 ESP32 Multi-Board Audio & HMI Ecosystem
 
-Production-grade, clean-aesthetic Internet Radio firmware designed specifically for the **Elecrow CrowPanel 1.28" ESP32-S3 HMI Rotary Touch Display** (`DHE38128D`).
+Master development workspace for custom ESP32/ESP32-S3 Internet Radios, Smart Clocks, and HMI displays across diverse hardware boards.
 
 ---
 
-## 📑 Repository Structure
+## 🗂️ Clean Repository Organization
+
+All hardware boards and firmware are isolated inside `Boards/` so codes and dependencies **never mix up**. Shared Arduino/ESP-IDF libraries, master station catalogs, and tools reside in `Common/`.
 
 ```
 D:\ESP32Radio\
-├── CrowPanel_1.28_ESP32_HMI_Radio\      ⭐ Complete Firmware for CrowPanel 1.28" Rotary Display Radio
-│   ├── CrowPanel_1.28_ESP32_HMI_Radio.ino # Main Dual-Core Firmware (LVGL 8.3, LovyanGFX, I2S Audio)
-│   ├── CST816D.cpp / CST816D.h          # Capacitive touch controller driver with swipe gesture recognition
-│   ├── stations_db.h                    # Verified Malayalam starter stations with active CloudFront mirrors
-│   ├── web_index.h                      # Embedded Web Remote with master online catalog direct stream playback
-│   ├── edifier_logo.h                   # 240x240 boot splash bitmap array
-│   ├── README.md                        # Detailed architecture & pinout guide
-│   └── simulator/                       # Browser-based hardware digital twin
-├── libraries\                           📚 Pre-configured hardware libraries (LovyanGFX, Adafruit_NeoPixel, lvgl, lv_conf.h)
-├── stations.json                        🌐 608-station master online catalog fetched by the Web Remote
-├── stations_full.json                   🌐 Complete station database
-├── generate_stations_header.py          🛠️ Station header generator script
-├── read_serial.py                       🔍 CDC Serial monitor script
-└── README.md                            📖 Master Repository Guide
+├── Boards\
+│   ├── CrowPanel_5.79_EPaper\          ⭐ Elecrow CrowPanel 5.79" E-Paper HMI (SSD1683 Dual-controller)
+│   │   ├── CrowPanel_5.79_SmartDesk_HMI\ # Desk Clock + Web Radio + Nameboard + Web Server
+│   │   ├── example\arduino\Examples\5.79_WiFi_Clock\ # Standalone NTP WiFi Clock
+│   │   ├── tools_and_previews\          # Display crop previews, HUD generators & mock tests
+│   │   ├── example\                     # Official manufacturer SDK and demos
+│   │   └── CROWPANEL_5.79_MASTER_GUIDE.md # Pinout, display timings & documentation
+│   │
+│   ├── CrowPanel_1.28_Rotary\          ⭐ Elecrow CrowPanel 1.28" Rotary Touch Dial (GC9A01 + CST816D)
+│   │   ├── CrowPanel_1.28_ESP32_HMI_Radio\ # Dual-Core Studio Radio, LVGL 8.3, Web Remote & Simulator
+│   │   ├── 3D_Printable_Speaker_Base\      # Custom 3D printable podium mount, MAX98357A chamber & wiring
+│   │   └── Hardware_and_SDK\            # Schematics, datasheets, 3D files & factory demos
+│   │
+│   ├── JC3248W535_3.5_Touch\           ⭐ Guition 3.5" Capacitive Touch Display (AXS15231B 320x480)
+│   │   ├── ESP32S3_JC3248W535_Radio_AllIsWell\ # Primary PlatformIO Radio firmware
+│   │   ├── ESP32S3_JC3248W535_Radio_fixed\     # Fixed audio/display variant
+│   │   ├── ESP32S3_JC3248W535_Radio_MP3OK\     # MP3 playback variant
+│   │   ├── ESP32S3_JC3248W535_SmartClock\      # Dedicated Smart Clock firmware
+│   │   ├── Hardware_and_SDK\                   # Factory documentation, schematics & manual
+│   │   └── Enclosures\                         # 3D printable enclosures (standard & 3" speaker)
+│   │
+│   ├── ATS_Mini_SI4732\                ⭐ ATS-Mini / SI4732 All-Band DSP Radio
+│   │   ├── 1_Official_ATS_Mini_Stock\   # Stock v2.27 firmware backup, official binaries & restore tool
+│   │   └── 2_Hybrid_SI4732_WebRadio\    # Custom hybrid FM/AM/SSB + Web Radio firmware
+│   │
+│   ├── Waveshare_2.8_Touch\            ⭐ Waveshare 2.8" Capacitive Touch Display
+│   │   └── 3D_Enclosure_Waveshare28\    # 3D printable enclosure assets
+│   │
+│   ├── M5Stack_Core2\                  ⭐ M5Stack Core2 ESP32
+│   │   └── M5Core2_AIR_Radio\           # M5Core2 internet radio sketch
+│   │
+│   ├── Headless_Modular_ESP32\         ⭐ Displayless / Modular ESP32 Radios
+│   │   ├── DualBoard_WiFi_BT\           # Board 1 (WiFi Streamer) + Board 2 (Bluetooth Sink)
+│   │   └── SingleBoard_Headless\        # HeadlessBoard, DisplaylessHack & TTGO-TDisplay radio
+│   │
+│   └── Retro_Gaming\                   ⭐ Retro Emulation
+│       └── Esp32-S3-nes-emulator\       # NES emulator ported to ESP32-S3
+│
+├── Common\                             📚 Shared Resources (One Source of Truth)
+│   ├── libraries\                      # Shared Arduino libraries: LovyanGFX, lvgl, ESP32-audioI2S, ESP32-A2DP, Adafruit_NeoPixel
+│   ├── data\                           # Master 5,700+ station online catalogs (stations.json, stations_full.json)
+│   ├── tools\                          # Header generator (generate_stations_header.py), serial monitor (read_serial.py)
+│   └── backups\                        # Library historical snapshots
+│
+├── Fabrication\                        🛠️ Enclosure & Cutting Designs
+│   └── Laser_Cuts\                     # Creality Falcon laser cutting designs (SVG, DXF, GCODE)
+│
+├── libraries\                          🔗 Directory Junction to Common\libraries (backward compatibility)
+└── README.md                           📖 Master Repository Architecture Guide
 ```
 
 ---
 
-## ⚡ Key Features
+## 🛠️ Build & Compilation Reference
 
-1. **Dual-Core FreeRTOS Architecture**:
-   - **Core 0 (Audio Task)**: `Audio::loop()` execution with **96 KB HLS jitter buffer** in 8MB PSRAM (6–8 seconds playback cushion).
-   - **Core 1 (UI & System Task)**: 60 FPS LVGL 8.3 rendering, CST816D capacitive touch reads, rotary dial decoding, and embedded HTTP web server. Knob response latency is `<50 ms`.
-
-2. **Power & Standby Engine**:
-   - **Cold Power-On Starts in Standby**: When power is plugged in, the device starts directly in **Standby Mode** with a soft glowing red pilot LED on the dial. The screen backlight stays dark (0%) and audio remains unstarted.
-   - **4-Second Hold Power ON**: Press and hold the knob push-button for 4 seconds to turn ON. The 5 WS2812B NeoPixels display a clockwise rotating chase animation with progressive fill, followed by an emerald green flash confirmation before clean boot.
-   - **4-Second Hold Power OFF**: Holding the knob push-button for 4 seconds while playing displays the "POWER OFF" progress overlay, cleanly fades out the backlight, shuts down the audio engine, and returns to Standby Red LED Mode.
-   - **Everyday Auto-On Alarm & Sleep Timer**: RTC timer wakeup automatically boots and begins playing at the scheduled alarm time.
-
-3. **Audio Streaming & Failover**:
-   - Full support for HLS (`.m3u8`), AAC, and MP3 streams.
-   - Automatic CloudFront CDN failover recovery for Akashvani stations.
-   - 10 starter Malayalam favorites with verified active distribution mirrors.
-
-4. **Embedded Web Remote Control**:
-   - Responsive web interface accessible at `http://<device-ip>/`.
-   - Live playback status, volume slider, mute, channel switcher, sleep timer manager, and custom favorite manager.
-   - **Master Online Catalog**: Browse and directly stream 608+ regional and national stations without needing to save them to favorites first.
-
----
-
-## 🛠️ Build & Flash Instructions
-
+### 1. CrowPanel 5.79" SmartDesk HMI / WiFi Clock
 Using `arduino-cli`:
-
 ```bash
-# 1. Compile
-arduino-cli compile --fqbn esp32:esp32:esp32s3:CDCOnBoot=cdc,FlashSize=16M,PSRAM=opi,PartitionScheme=app3M_fat9M_16MB --libraries "libraries" CrowPanel_1.28_ESP32_HMI_Radio
-
-# 2. Upload (replace COM10 with your serial port)
-arduino-cli upload -p COM10 --fqbn esp32:esp32:esp32s3:CDCOnBoot=cdc,FlashSize=16M,PSRAM=opi,PartitionScheme=app3M_fat9M_16MB CrowPanel_1.28_ESP32_HMI_Radio
+arduino-cli compile --fqbn esp32:esp32:esp32s3:CDCOnBoot=cdc,CPUFreq=240,FlashMode=qio,FlashSize=8M,PartitionScheme=default_8MB,PSRAM=opi \
+  --library "Common/libraries/ESP32-audioI2S" \
+  Boards/CrowPanel_5.79_EPaper/CrowPanel_5.79_SmartDesk_HMI/CrowPanel_5.79_SmartDesk_HMI.ino
 ```
+
+### 2. CrowPanel 1.28" Rotary Studio Radio
+Using `arduino-cli`:
+```bash
+arduino-cli compile --fqbn esp32:esp32:esp32s3:CDCOnBoot=cdc,FlashSize=16M,PSRAM=opi,PartitionScheme=app3M_fat9M_16MB \
+  --libraries "Common/libraries" \
+  Boards/CrowPanel_1.28_Rotary/CrowPanel_1.28_ESP32_HMI_Radio/CrowPanel_1.28_ESP32_HMI_Radio.ino
+```
+
+### 3. JC3248W535 3.5" Radio
+Using `PlatformIO`:
+```bash
+cd Boards/JC3248W535_3.5_Touch/ESP32S3_JC3248W535_Radio_AllIsWell
+pio run -e esp32s3_jc3248w535
+```
+*(A local directory junction inside `Boards/JC3248W535_3.5_Touch/libraries` routes any `../libraries` reference directly to `Common/libraries/`).*

@@ -369,9 +369,9 @@ table.fav-table th { color: #8b949e; font-weight: 600; font-size: 11px; text-tra
 <div class="box">
   <div style="font-weight:600;color:#58a6ff;font-size:15px;margin-bottom:4px;text-align:left;">🌐 Master Online Catalog (GitHub)</div>
   <div style="font-size:12px;color:#8b949e;text-align:left;margin-bottom:10px;">
-    Live 270+ station directory. Click <b style="color:#ffd54f;">[⭐ Add]</b> to save any station to your radio.
+    Live 5,700+ station directory. Click <b style="color:#ffd54f;">[⭐ Add]</b> to save any station to your radio.
   </div>
-  <input type="text" id="catSearch" placeholder="🔍 Search 270+ stations by name, city, state, or language..." oninput="filterCatalog()">
+  <input type="text" id="catSearch" placeholder="🔍 Search 5,700+ stations by name, city, state, or language..." oninput="filterCatalog()">
   <div class="pills" id="catPills">
     <div class="pill active" onclick="selectPill(this, 'ALL')">All</div>
     <div class="pill" onclick="selectPill(this, 'Malayalam')">Malayalam</div>
@@ -418,7 +418,13 @@ const STARTER_STATIONS = [
   { name: "AIR Kerala", state: "Kerala", lang: "Malayalam", url: "https://d1cvqgmbcpg5yn.cloudfront.net/6ff13de7ea9b53d7/6ff13de7ea9b53d7.m3u8" }
 ];
 
-const CATALOG_URL = "https://raw.githubusercontent.com/sureshmagnolia/ESP32-SI4732-Radio/main/stations.json";
+const CATALOG_URLS = [
+  "https://raw.githubusercontent.com/sureshmagnolia/esp32onlineradio/main/Common/data/stations.json",
+  "https://raw.githubusercontent.com/sureshmagnolia/esp32onlineradio/main/stations.json",
+  "https://raw.githubusercontent.com/sureshmagnolia/esp32onlineradio/CrowPanel-5.79-EPaper/Common/data/stations.json",
+  "https://raw.githubusercontent.com/sureshmagnolia/esp32onlineradio/waveshare28-stereo-radio/stations.json",
+  "https://raw.githubusercontent.com/sureshmagnolia/ESP32-SI4732-Radio/main/stations.json"
+];
 let deviceFavorites = [...STARTER_STATIONS];
 let onlineCatalog = [];
 let activePill = "ALL";
@@ -604,12 +610,8 @@ function renderFavorites(){
 }
 
 function loadOnlineCatalog(){
-  fetch(CATALOG_URL)
-    .then(r => r.json())
-    .then(d => {
-      onlineCatalog = Array.isArray(d) ? d : (d.stations || []);
-      renderCatalog();
-    }).catch(() => {
+  let tryLoad = (idx) => {
+    if(idx >= CATALOG_URLS.length){
       // Fallback
       onlineCatalog = [
         { name: "Akashvani Thrissur", state: "Kerala", lang: "Malayalam", url: "https://radio.wavespb.com/live/f70fdeca437dc326/f70fdeca437dc326.m3u8" },
@@ -619,7 +621,17 @@ function loadOnlineCatalog(){
         { name: "FM Gold Delhi", state: "Delhi", lang: "Hindi", url: "https://airhlspush.pc.cdn.bitgravity.com/httppush/hlspbaudio005/hlspbaudio005_Auto.m3u8" }
       ];
       renderCatalog();
-    });
+      return;
+    }
+    fetch(CATALOG_URLS[idx])
+      .then(r => r.json())
+      .then(d => {
+        onlineCatalog = Array.isArray(d) ? d : (d.stations || []);
+        renderCatalog();
+      })
+      .catch(() => tryLoad(idx + 1));
+  };
+  tryLoad(0);
 }
 
 function isStationFavorited(url){

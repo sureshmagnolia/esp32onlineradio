@@ -1,6 +1,26 @@
+import os
 import json
 
-with open('d:/ESP32Radio/stations_full.json', 'r', encoding='utf-8') as f:
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+PROJECT_ROOT = os.path.abspath(os.path.join(SCRIPT_DIR, "..", ".."))
+
+# Resolve stations_full.json
+json_candidates = [
+    os.path.join(PROJECT_ROOT, "Common", "data", "stations_full.json"),
+    os.path.join(PROJECT_ROOT, "stations_full.json"),
+]
+
+json_path = None
+for p in json_candidates:
+    if os.path.exists(p):
+        json_path = p
+        break
+
+if not json_path:
+    raise FileNotFoundError("Could not locate stations_full.json")
+
+print(f"Loading stations from: {json_path}")
+with open(json_path, 'r', encoding='utf-8') as f:
     stations = json.load(f)
 
 clean_stations = []
@@ -9,9 +29,9 @@ languages_set = set()
 
 for s in stations:
     name = s.get('name', '').strip().replace('"', '\\"')
-    url = s.get('stream_url', '').strip().replace('"', '\\"')
+    url = (s.get('url') or s.get('stream_url', '')).strip().replace('"', '\\"')
     state = s.get('state', '').strip().title().replace('"', '\\"')
-    lang = s.get('language', '').strip()
+    lang = (s.get('lang') or s.get('language', '')).strip()
     
     if not name or not url:
         continue
@@ -69,7 +89,17 @@ out_lines.append('};')
 out_lines.append('')
 out_lines.append('#endif // _STATIONS_DB_H_')
 
-with open('d:/ESP32Radio/ESP32S3_JC3248W535_Radio/stations_db.h', 'w', encoding='utf-8') as f:
-    f.write('\n'.join(out_lines))
+# Write output to available board targets or Common/data
+targets = [
+    os.path.join(PROJECT_ROOT, "Common", "data", "stations_db.h"),
+    os.path.join(PROJECT_ROOT, "Boards", "JC3248W535_3.5_Touch", "ESP32S3_JC3248W535_Radio_fixed", "stations_db.h")
+]
+
+for target in targets:
+    target_dir = os.path.dirname(target)
+    if os.path.exists(target_dir):
+        with open(target, 'w', encoding='utf-8') as f:
+            f.write('\n'.join(out_lines))
+        print(f"Generated: {target}")
 
 print(f'Successfully generated stations_db.h with {len(clean_stations)} stations!')

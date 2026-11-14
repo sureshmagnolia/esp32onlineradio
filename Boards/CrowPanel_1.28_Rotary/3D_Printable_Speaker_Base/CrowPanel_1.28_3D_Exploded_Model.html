@@ -1,0 +1,1492 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CrowPanel 1.28" Royal Rimmed Speaker Mount — 3D Exploded Assembly</title>
+    <!-- Modern Google Font -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+    <!-- Three.js and OrbitControls -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <style>
+        :root {
+            --bg-color: #0b0f19;
+            --panel-bg: rgba(18, 24, 38, 0.88);
+            --panel-border: rgba(255, 255, 255, 0.12);
+            --accent-cyan: #00e5ff;
+            --accent-copper: #d97746;
+            --accent-gold: #ffd700;
+            --text-primary: #f0f4fc;
+            --text-secondary: #94a3b8;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            user-select: none;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-primary);
+            font-family: 'Outfit', sans-serif;
+            overflow: hidden;
+            width: 100vw;
+            height: 100vh;
+        }
+
+        #canvas3d {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 1;
+        }
+
+        /* Glassmorphism Top Header */
+        header {
+            position: absolute;
+            top: 20px;
+            left: 24px;
+            z-index: 10;
+            background: var(--panel-bg);
+            backdrop-filter: blur(16px);
+            border: 1px solid var(--panel-border);
+            padding: 14px 22px;
+            border-radius: 16px;
+            box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+            pointer-events: auto;
+        }
+
+        header h1 {
+            font-size: 1.22rem;
+            font-weight: 800;
+            letter-spacing: -0.02em;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        header h1 span.badge-copper {
+            background: linear-gradient(135deg, #d97746, #b85d30);
+            color: #fff;
+            font-size: 0.68rem;
+            font-weight: 800;
+            padding: 3px 8px;
+            border-radius: 8px;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        header h1 span.badge-gold {
+            background: linear-gradient(135deg, #ffd700, #ff8c00);
+            color: #000;
+            font-size: 0.68rem;
+            font-weight: 800;
+            padding: 3px 8px;
+            border-radius: 8px;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        header p {
+            font-size: 0.82rem;
+            color: var(--text-secondary);
+            margin-top: 4px;
+        }
+
+        /* Master Control Panel (Bottom Floating HUD) */
+        .control-dock {
+            position: absolute;
+            bottom: 24px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 10;
+            background: var(--panel-bg);
+            backdrop-filter: blur(16px);
+            border: 1px solid var(--panel-border);
+            padding: 12px 24px;
+            border-radius: 20px;
+            box-shadow: 0 16px 40px rgba(0, 0, 0, 0.5);
+            display: flex;
+            align-items: center;
+            gap: 20px;
+            pointer-events: auto;
+        }
+
+        .slider-group {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            min-width: 240px;
+        }
+
+        .slider-header {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.75rem;
+            font-weight: 700;
+            color: var(--text-secondary);
+            letter-spacing: 0.05em;
+        }
+
+        .slider-header span.val {
+            color: var(--accent-copper);
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        input[type="range"] {
+            -webkit-appearance: none;
+            width: 100%;
+            height: 6px;
+            border-radius: 3px;
+            background: rgba(255, 255, 255, 0.15);
+            outline: none;
+        }
+
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            background: var(--accent-copper);
+            cursor: pointer;
+            box-shadow: 0 0 12px var(--accent-copper);
+            transition: transform 0.15s ease;
+        }
+
+        input[type="range"]::-webkit-slider-thumb:hover {
+            transform: scale(1.2);
+        }
+
+        .btn-group {
+            display: flex;
+            gap: 8px;
+        }
+
+        .btn {
+            background: rgba(255, 255, 255, 0.08);
+            border: 1px solid var(--panel-border);
+            color: var(--text-primary);
+            padding: 8px 13px;
+            border-radius: 10px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            font-family: 'Outfit', sans-serif;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            transition: all 0.2s ease;
+        }
+
+        .btn:hover {
+            background: rgba(255, 255, 255, 0.16);
+            border-color: var(--accent-copper);
+        }
+
+        .btn.active {
+            background: rgba(217, 119, 70, 0.25);
+            border-color: var(--accent-copper);
+            color: var(--accent-copper);
+            box-shadow: 0 0 14px rgba(217, 119, 70, 0.35);
+        }
+
+        /* Material Theme Switcher */
+        .mat-selector {
+            display: flex;
+            gap: 4px;
+            background: rgba(0, 0, 0, 0.3);
+            padding: 3px;
+            border-radius: 10px;
+            border: 1px solid var(--panel-border);
+        }
+
+        .mat-btn {
+            background: transparent;
+            border: none;
+            color: var(--text-secondary);
+            font-size: 0.72rem;
+            font-weight: 700;
+            padding: 5px 9px;
+            border-radius: 7px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .mat-btn:hover {
+            color: var(--text-primary);
+        }
+
+        .mat-btn.active {
+            background: rgba(255, 255, 255, 0.15);
+            color: var(--accent-copper);
+        }
+
+        /* Right Side Parts Hierarchy Sidebar */
+        .parts-sidebar {
+            position: absolute;
+            top: 20px;
+            right: 24px;
+            width: 320px;
+            max-height: calc(100vh - 120px);
+            z-index: 10;
+            background: var(--panel-bg);
+            backdrop-filter: blur(16px);
+            border: 1px solid var(--panel-border);
+            border-radius: 16px;
+            padding: 16px;
+            box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            overflow-y: auto;
+            pointer-events: auto;
+        }
+
+        .parts-sidebar h2 {
+            font-size: 0.85rem;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            color: var(--text-secondary);
+            margin-bottom: 4px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .part-item {
+            background: rgba(255, 255, 255, 0.04);
+            border: 1px solid rgba(255, 255, 255, 0.06);
+            padding: 9px 12px;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            display: flex;
+            flex-direction: column;
+            gap: 3px;
+        }
+
+        .part-item:hover {
+            background: rgba(255, 255, 255, 0.09);
+            border-color: rgba(255, 255, 255, 0.2);
+        }
+
+        .part-item.selected {
+            background: rgba(217, 119, 70, 0.16);
+            border-color: var(--accent-copper);
+            box-shadow: 0 0 12px rgba(217, 119, 70, 0.25);
+        }
+
+        .part-title {
+            font-size: 0.84rem;
+            font-weight: 700;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .part-tag {
+            font-size: 0.65rem;
+            font-family: 'JetBrains Mono', monospace;
+            padding: 2px 6px;
+            border-radius: 4px;
+            background: rgba(255, 255, 255, 0.1);
+            color: var(--text-secondary);
+        }
+
+        .part-desc {
+            font-size: 0.72rem;
+            color: var(--text-secondary);
+            line-height: 1.3;
+        }
+
+        /* Floating Info Callout Card */
+        #detailCard {
+            position: absolute;
+            left: 24px;
+            bottom: 24px;
+            width: 320px;
+            z-index: 10;
+            background: var(--panel-bg);
+            backdrop-filter: blur(16px);
+            border: 1px solid var(--panel-border);
+            padding: 16px;
+            border-radius: 16px;
+            box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+            display: none;
+            pointer-events: auto;
+        }
+
+        #detailCard h3 {
+            font-size: 1.0rem;
+            font-weight: 800;
+            color: var(--accent-copper);
+            margin-bottom: 6px;
+        }
+
+        #detailCard p {
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+            line-height: 1.4;
+            margin-bottom: 8px;
+        }
+
+        #detailCard .specs-list {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.72rem;
+            color: var(--text-primary);
+            background: rgba(0, 0, 0, 0.35);
+            padding: 8px 10px;
+            border-radius: 8px;
+            line-height: 1.5;
+        }
+
+        /* Camera Views Pill */
+        .camera-views {
+            position: absolute;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 10;
+            background: var(--panel-bg);
+            backdrop-filter: blur(12px);
+            border: 1px solid var(--panel-border);
+            padding: 6px 12px;
+            border-radius: 30px;
+            display: flex;
+            gap: 6px;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+            pointer-events: auto;
+        }
+
+        .cam-btn {
+            background: transparent;
+            border: none;
+            color: var(--text-secondary);
+            font-size: 0.75rem;
+            font-weight: 600;
+            padding: 4px 10px;
+            border-radius: 20px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .cam-btn:hover, .cam-btn.active {
+            color: var(--text-primary);
+            background: rgba(255, 255, 255, 0.12);
+        }
+
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar {
+            width: 4px;
+        }
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 2px;
+        }
+    </style>
+</head>
+<body>
+    <div id="canvas3d"></div>
+
+    <!-- Header -->
+    <header>
+        <h1>
+            CrowPanel 1.28" Conical Mount 
+            <span class="badge-copper">Royal Rims</span>
+            <span class="badge-gold">Minimalist Crest</span>
+        </h1>
+        <p>Classical Torus Rims • Clean Oval Border Line • Authentic Edifier Acoustic Mark • Bottle-Cap Spiral Lock</p>
+    </header>
+
+    <!-- Camera View Presets -->
+    <div class="camera-views">
+        <button class="cam-btn active" id="viewIso">Isometric</button>
+        <button class="cam-btn" id="viewFront">Front Royal Crest</button>
+        <button class="cam-btn" id="viewSidePort">Side Cable Port</button>
+        <button class="cam-btn" id="viewTop">Top</button>
+        <button class="cam-btn" id="viewSection">Cross-Section</button>
+        <button class="cam-btn" id="viewBottom">Bottom Plinth</button>
+    </div>
+
+    <!-- Right Side Parts Hierarchy -->
+    <div class="parts-sidebar">
+        <h2>Assembly Stack <span style="font-size:0.7rem; color:var(--text-secondary);">8 Components</span></h2>
+        
+        <div class="part-item" data-id="glass">
+            <div class="part-title"><span>1. Circular Glass Cover</span><span class="part-tag">240×240</span></div>
+            <div class="part-desc">Scratch-resistant tempered glass cover lens</div>
+        </div>
+
+        <div class="part-item" data-id="screen">
+            <div class="part-title"><span>2. GC9A01 IPS Dial Face</span><span class="part-tag">1.28" SPI</span></div>
+            <div class="part-desc">Circular 65K color TFT with CST816D touch layer</div>
+        </div>
+
+        <div class="part-item" data-id="knob">
+            <div class="part-title"><span>3. Knurled Metal Rotary Dial</span><span class="part-tag">Ø48mm CNC</span></div>
+            <div class="part-desc">Aluminum alloy volume/navigation knurled outer ring</div>
+        </div>
+
+        <div class="part-item" data-id="pcb">
+            <div class="part-title"><span>4. ESP32-S3 CrowPanel PCB</span><span class="part-tag">16MB/8MB</span></div>
+            <div class="part-desc">Main controller, dual JST ports (I2C/UART), 5x RGB ring</div>
+        </div>
+
+        <div class="part-item" data-id="screws">
+            <div class="part-title"><span>5. 2× M2 Fastening Screws</span><span class="part-tag">M2×6mm</span></div>
+            <div class="part-desc">Zero-bulge flush counterbore into CrowPanel standoffs</div>
+        </div>
+
+        <div class="part-item" data-id="partA">
+            <div class="part-title"><span style="color:var(--accent-copper); font-weight:700;">6. Part A: Top Adapter</span><span class="part-tag" style="background:rgba(217,119,70,0.2);">ROYAL CAP</span></div>
+            <div class="part-desc">Crown rims, sleek satin band, tightened collar, male spiral thread</div>
+        </div>
+
+        <div class="part-item" data-id="amp">
+            <div class="part-title"><span style="color:var(--accent-gold); font-weight:700;">7. MAX98357A I2S Amp &amp; Wires</span><span class="part-tag" style="background:rgba(255,215,0,0.2);">3.2W MONO</span></div>
+            <div class="part-desc">DAC seated in floor rails; routes to side port or bottom</div>
+        </div>
+
+        <div class="part-item" data-id="partB">
+            <div class="part-title"><span style="color:var(--accent-copper); font-weight:700;">8. Part B: Conical Pedestal</span><span class="part-tag" style="background:rgba(217,119,70,0.2);">Ø64mm PLINTH</span></div>
+            <div class="part-desc">Plinth rims, sleek satin band, front Edifier flame emblem in clean oval frame, arched side cable port</div>
+        </div>
+    </div>
+
+    <!-- Active Detail Card -->
+    <div id="detailCard">
+        <h3 id="cardTitle">Part Details</h3>
+        <p id="cardDesc">Click any part or drag the slider to explore the assembly.</p>
+        <div class="specs-list" id="cardSpecs">Specs: --</div>
+    </div>
+
+    <!-- Bottom Floating HUD Controls -->
+    <div class="control-dock">
+        <div class="slider-group">
+            <div class="slider-header">
+                <span>EXPLODED VIEW EXPANSION</span>
+                <span class="val" id="explodeVal">0%</span>
+            </div>
+            <input type="range" id="explodeSlider" min="0" max="100" value="0">
+        </div>
+
+        <!-- Material Switcher -->
+        <div class="mat-selector">
+            <button class="mat-btn active" id="matCopper">Copper</button>
+            <button class="mat-btn" id="matGold">Gold</button>
+            <button class="mat-btn" id="matCharcoal">Charcoal</button>
+        </div>
+
+        <div class="btn-group">
+            <button class="btn" id="btnTwistLock">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"></path></svg>
+                Twist Lock
+            </button>
+            <button class="btn" id="btnAutoExplode">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+                Animate
+            </button>
+            <button class="btn" id="btnXray">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="2" x2="12" y2="22"></line></svg>
+                X-Ray
+            </button>
+            <button class="btn" id="btnRotate">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"></circle><path d="M12 2v3M12 19v3M2 12h3M19 12h3"></path></svg>
+                Turntable
+            </button>
+        </div>
+    </div>
+
+    <script>
+        /* -------------------------------------------------------------
+         * THREE.JS 3D SCENE INITIALIZATION
+         * ------------------------------------------------------------- */
+        const container = document.getElementById('canvas3d');
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x0b0f19);
+        scene.fog = new THREE.FogExp2(0x0b0f19, 0.0032);
+
+        const camera = new THREE.PerspectiveCamera(40, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.set(100, 75, 145);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+        renderer.toneMapping = THREE.ACESFilmicToneMapping;
+        renderer.toneMappingExposure = 1.25;
+        container.appendChild(renderer.domElement);
+
+        const controls = new THREE.OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.dampingFactor = 0.06;
+        controls.maxPolarAngle = Math.PI / 2 + 0.08;
+        controls.minDistance = 25;
+        controls.maxDistance = 350;
+        controls.target.set(0, 30, 0);
+
+        /* -------------------------------------------------------------
+         * LIGHTING RIG (Warm Metallic Studio Quality)
+         * ------------------------------------------------------------- */
+        const ambientLight = new THREE.AmbientLight(0xfff6ea, 0.7);
+        scene.add(ambientLight);
+
+        const keyLight = new THREE.DirectionalLight(0xffeedd, 1.45);
+        keyLight.position.set(55, 95, 65);
+        keyLight.castShadow = true;
+        keyLight.shadow.mapSize.width = 2048;
+        keyLight.shadow.mapSize.height = 2048;
+        keyLight.shadow.bias = -0.0001;
+        scene.add(keyLight);
+
+        const fillLight = new THREE.DirectionalLight(0xffaa66, 0.55);
+        fillLight.position.set(-65, 45, -55);
+        scene.add(fillLight);
+
+        const rimLight = new THREE.DirectionalLight(0xffd700, 0.65);
+        rimLight.position.set(0, 65, -75);
+        scene.add(rimLight);
+
+        // Ground / Speaker Cabinet Top Mockup
+        const speakerGeo = new THREE.BoxGeometry(120, 6, 120);
+        const speakerMat = new THREE.MeshStandardMaterial({
+            color: 0x14171d,
+            roughness: 0.8,
+            metalness: 0.15
+        });
+        const speakerMesh = new THREE.Mesh(speakerGeo, speakerMat);
+        speakerMesh.position.y = -3;
+        speakerMesh.receiveShadow = true;
+        scene.add(speakerMesh);
+
+        const grid = new THREE.GridHelper(180, 24, 0xd97746, 0x1f2937);
+        grid.position.y = -0.02;
+        grid.material.opacity = 0.22;
+        grid.material.transparent = true;
+        scene.add(grid);
+
+        /* -------------------------------------------------------------
+         * TEXTURE GENERATORS (Greek Meander & Edifier Emblem Textures)
+         * ------------------------------------------------------------- */
+        function createRadioDisplayTexture() {
+            const canvas = document.createElement('canvas');
+            canvas.width = 512;
+            canvas.height = 512;
+            const ctx = canvas.getContext('2d');
+
+            const grad = ctx.createRadialGradient(256, 256, 20, 256, 256, 256);
+            grad.addColorStop(0, '#0f172a');
+            grad.addColorStop(0.8, '#050811');
+            grad.addColorStop(1, '#000000');
+            ctx.fillStyle = grad;
+            ctx.fillRect(0, 0, 512, 512);
+
+            ctx.beginPath();
+            ctx.arc(256, 256, 230, -Math.PI * 0.85, Math.PI * 0.35);
+            ctx.lineWidth = 14;
+            ctx.strokeStyle = '#d97746';
+            ctx.shadowColor = '#d97746';
+            ctx.shadowBlur = 15;
+            ctx.stroke();
+
+            ctx.beginPath();
+            ctx.arc(256, 256, 230, Math.PI * 0.35, Math.PI * 0.85);
+            ctx.lineWidth = 14;
+            ctx.strokeStyle = '#334155';
+            ctx.shadowBlur = 0;
+            ctx.stroke();
+
+            ctx.fillStyle = 'rgba(217, 119, 70, 0.18)';
+            ctx.roundRect ? ctx.roundRect(176, 80, 160, 36, 18) : ctx.rect(176, 80, 160, 36);
+            ctx.fill();
+
+            ctx.fillStyle = '#ffaa77';
+            ctx.font = 'bold 18px Outfit, sans-serif';
+            ctx.textAlign = 'center';
+            ctx.fillText('CH 01 OF 10', 256, 105);
+
+            ctx.fillStyle = '#ffffff';
+            ctx.font = '800 38px Outfit, sans-serif';
+            ctx.fillText('AIR Thrissur', 256, 220);
+
+            ctx.fillStyle = '#94a3b8';
+            ctx.font = '500 20px Outfit, sans-serif';
+            ctx.fillText('100% Direct CDN • Malayalam', 256, 255);
+
+            ctx.fillStyle = '#ffd700';
+            ctx.font = 'bold 22px Outfit, sans-serif';
+            ctx.fillText('630 kHz • 128 kbps AAC', 256, 310);
+
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.75)';
+            ctx.font = '16px "JetBrains Mono", monospace';
+            ctx.fillText('EDIFIER • 🔊 85% • IP 192.168.1.102', 256, 390);
+
+            return new THREE.CanvasTexture(canvas);
+        }
+
+        // Architectural Metallic Accent Band for Frieze Areas (Clean, Non-Floral)
+        function createGreekKeyTexture() {
+            const canvas = document.createElement('canvas');
+            canvas.width = 512;
+            canvas.height = 96;
+            const ctx = canvas.getContext('2d');
+
+            const grad = ctx.createLinearGradient(0, 0, 0, 96);
+            grad.addColorStop(0.0, '#221915');
+            grad.addColorStop(0.5, '#382820');
+            grad.addColorStop(1.0, '#221915');
+            ctx.fillStyle = grad;
+            ctx.fillRect(0, 0, 512, 96);
+
+            // Subtle parallel micro-groove accent line
+            ctx.strokeStyle = 'rgba(230, 150, 100, 0.35)';
+            ctx.lineWidth = 1.2;
+            for (let y = 16; y < 96; y += 16) {
+                ctx.beginPath();
+                ctx.moveTo(0, y);
+                ctx.lineTo(512, y);
+                ctx.stroke();
+            }
+
+            const tex = new THREE.CanvasTexture(canvas);
+            tex.wrapS = THREE.RepeatWrapping;
+            tex.wrapT = THREE.ClampToEdgeWrapping;
+            tex.repeat.set(4, 1);
+            return tex;
+        }
+
+        // Royal Minimalist Crest: Authentic Smooth Edifier Emblem & Clean Oval Line Alone (Zero Pixelation, No Text, No Flowers)
+        function createEdifierCartoucheTexture() {
+            const canvas = document.createElement('canvas');
+            canvas.width = 512;
+            canvas.height = 512;
+            const ctx = canvas.getContext('2d');
+
+            ctx.clearRect(0, 0, 512, 512);
+
+            const cx = 256;
+            const cy = 256;
+
+            // Soft radial metallic illumination behind the crest
+            const grad = ctx.createRadialGradient(cx, cy, 20, cx, cy, 220);
+            grad.addColorStop(0, 'rgba(240, 160, 100, 0.25)');
+            grad.addColorStop(0.7, 'rgba(180, 90, 45, 0.08)');
+            grad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+            ctx.fillStyle = grad;
+            ctx.fillRect(0, 0, 512, 512);
+
+            // 1. CLEAN OVAL BORDER LINE ALONE (Zero Floral Elements, Pure Royal Line)
+            ctx.beginPath();
+            ctx.ellipse(cx, cy, 185, 142, 0, 0, Math.PI * 2);
+            ctx.lineWidth = 6.0;
+            ctx.strokeStyle = '#f2a272';
+            ctx.shadowColor = 'rgba(0, 0, 0, 0.55)';
+            ctx.shadowBlur = 8;
+            ctx.shadowOffsetY = 2;
+            ctx.stroke();
+
+            // Inner delicate hairline rim accent
+            ctx.beginPath();
+            ctx.ellipse(cx, cy, 175, 132, 0, 0, Math.PI * 2);
+            ctx.lineWidth = 1.8;
+            ctx.strokeStyle = 'rgba(255, 215, 170, 0.65)';
+            ctx.shadowBlur = 0;
+            ctx.stroke();
+
+            // 2. AUTHENTIC EDIFIER 3-FLAME ACOUSTIC MARK (Centered, Curved, Smooth, Zero Pixelation)
+            ctx.save();
+            ctx.translate(cx, cy);
+
+            // Slanted acoustic flame wings with metallic gradient
+            function drawFlameSlash(x1, y1, x2, y2, w) {
+                // Drop shadow
+                ctx.strokeStyle = 'rgba(0, 0, 0, 0.55)';
+                ctx.lineWidth = w + 4;
+                ctx.lineCap = 'round';
+                ctx.beginPath();
+                ctx.moveTo(x1 + 2, y1 + 3);
+                ctx.lineTo(x2 + 2, y2 + 3);
+                ctx.stroke();
+
+                // Bright metallic gradient
+                const g = ctx.createLinearGradient(x1, y1, x2, y2);
+                g.addColorStop(0, '#ffe4c4');
+                g.addColorStop(0.5, '#ffffff');
+                g.addColorStop(1, '#ffaa66');
+                ctx.strokeStyle = g;
+                ctx.lineWidth = w;
+                ctx.beginPath();
+                ctx.moveTo(x1, y1);
+                ctx.lineTo(x2, y2);
+                ctx.stroke();
+            }
+
+            // Left tall flame
+            drawFlameSlash(-40, 40, -4, -60, 28);
+            // Middle flame
+            drawFlameSlash(-2, 58, 32, -18, 26);
+            // Right flame
+            drawFlameSlash(36, 60, 60, 12, 24);
+            ctx.restore();
+
+            return new THREE.CanvasTexture(canvas);
+        }
+
+        // Knurling Texture for Rotary Dial
+        function createKnurlingTexture() {
+            const canvas = document.createElement('canvas');
+            canvas.width = 128;
+            canvas.height = 128;
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = '#a0a5ad';
+            ctx.fillRect(0, 0, 128, 128);
+            ctx.strokeStyle = '#3a3f47';
+            ctx.lineWidth = 3;
+            for (let i = -128; i < 256; i += 12) {
+                ctx.beginPath();
+                ctx.moveTo(i, 0);
+                ctx.lineTo(i + 128, 128);
+                ctx.stroke();
+
+                ctx.beginPath();
+                ctx.moveTo(i, 128);
+                ctx.lineTo(i + 128, 0);
+                ctx.stroke();
+            }
+            const tex = new THREE.CanvasTexture(canvas);
+            tex.wrapS = THREE.RepeatWrapping;
+            tex.wrapT = THREE.RepeatWrapping;
+            tex.repeat.set(16, 2);
+            return tex;
+        }
+
+        /* -------------------------------------------------------------
+         * MATERIAL THEMES (Antique Copper, Royal Gold, Stealth Charcoal)
+         * ------------------------------------------------------------- */
+        const materialThemes = {
+            copper: {
+                baseColor: 0xb55a30,
+                roughness: 0.38,
+                metalness: 0.85,
+                accentColor: 0xd97746,
+                name: 'Antique Nordic Copper'
+            },
+            gold: {
+                baseColor: 0xd4af37,
+                roughness: 0.32,
+                metalness: 0.90,
+                accentColor: 0xffd700,
+                name: 'Royal Brushed Gold'
+            },
+            charcoal: {
+                baseColor: 0x1e2430,
+                roughness: 0.50,
+                metalness: 0.30,
+                accentColor: 0x00e5ff,
+                name: 'Stealth Matte Charcoal'
+            }
+        };
+
+        let currentTheme = 'copper';
+
+        const matRoyalMetal = new THREE.MeshStandardMaterial({
+            color: materialThemes.copper.baseColor,
+            roughness: materialThemes.copper.roughness,
+            metalness: materialThemes.copper.metalness
+        });
+
+        const matRimAccent = new THREE.MeshStandardMaterial({
+            color: 0xe08855,
+            roughness: 0.28,
+            metalness: 0.92
+        });
+
+        const matGreekFrieze = new THREE.MeshStandardMaterial({
+            map: createGreekKeyTexture(),
+            roughness: 0.4,
+            metalness: 0.75
+        });
+
+        const matCartouche = new THREE.MeshStandardMaterial({
+            map: createEdifierCartoucheTexture(),
+            transparent: true,
+            roughness: 0.25,
+            metalness: 0.85,
+            depthWrite: false,
+            side: THREE.DoubleSide
+        });
+
+        function applyTheme(themeKey) {
+            currentTheme = themeKey;
+            const t = materialThemes[themeKey];
+            matRoyalMetal.color.setHex(t.baseColor);
+            matRoyalMetal.roughness = t.roughness;
+            matRoyalMetal.metalness = t.metalness;
+
+            matRimAccent.color.setHex(t.accentColor);
+
+            document.querySelectorAll('.mat-btn').forEach(b => b.classList.remove('active'));
+            if (themeKey === 'copper') document.getElementById('matCopper').classList.add('active');
+            if (themeKey === 'gold') document.getElementById('matGold').classList.add('active');
+            if (themeKey === 'charcoal') document.getElementById('matCharcoal').classList.add('active');
+        }
+
+        document.getElementById('matCopper').addEventListener('click', () => applyTheme('copper'));
+        document.getElementById('matGold').addEventListener('click', () => applyTheme('gold'));
+        document.getElementById('matCharcoal').addEventListener('click', () => applyTheme('charcoal'));
+
+        /* -------------------------------------------------------------
+         * HELICAL THREAD MESH GENERATOR
+         * ------------------------------------------------------------- */
+        function createHelicalThreadGeometry(rRoot, rCrest, pitch, turns, zStart, steps = 120) {
+            const geo = new THREE.BufferGeometry();
+            const verts = [];
+            const indices = [];
+
+            const totalSteps = steps;
+            const depth = rCrest - rRoot;
+
+            for (let i = 0; i <= totalSteps; i++) {
+                const u = i / totalSteps;
+                const phi = u * turns * Math.PI * 2;
+                const zC = zStart + (pitch / (Math.PI * 2)) * phi;
+
+                let taper = 1.0;
+                if (u < 0.15) taper = u / 0.15;
+                if (u > 0.85) taper = (1.0 - u) / 0.15;
+
+                const curR = rRoot + depth * taper;
+                const c = Math.cos(phi);
+                const s = Math.sin(phi);
+
+                verts.push(rRoot * c, zC - 0.9, rRoot * s);
+                verts.push(curR * c, zC, curR * s);
+                verts.push(rRoot * c, zC + 0.9, rRoot * s);
+            }
+
+            for (let i = 0; i < totalSteps; i++) {
+                const idx1 = i * 3;
+                const idx2 = (i + 1) * 3;
+                indices.push(idx1 + 0, idx2 + 0, idx2 + 1);
+                indices.push(idx1 + 0, idx2 + 1, idx1 + 1);
+                indices.push(idx1 + 1, idx2 + 1, idx2 + 2);
+                indices.push(idx1 + 1, idx2 + 2, idx1 + 2);
+            }
+
+            geo.setIndex(indices);
+            geo.setAttribute('position', new THREE.Float32BufferAttribute(verts, 3));
+            geo.computeVertexNormals();
+            return geo;
+        }
+
+        /* -------------------------------------------------------------
+         * ASSEMBLY LAYERS CREATION
+         * ------------------------------------------------------------- */
+        const partsGroup = new THREE.Group();
+        scene.add(partsGroup);
+
+        const assemblyLayers = [];
+
+        function registerLayer(id, name, object, baseOffset, explodeMultiplier, info) {
+            object.castShadow = true;
+            object.receiveShadow = true;
+            partsGroup.add(object);
+            assemblyLayers.push({
+                id,
+                name,
+                object,
+                baseY: baseOffset,
+                multiplier: explodeMultiplier,
+                info
+            });
+        }
+
+        // =============================================================
+        // 1. Part B: Bottom Pedestal (Smooth Cone with Rims & Front Logo)
+        // =============================================================
+        const partB_Group = new THREE.Group();
+
+        // Smooth conical body (Ø64mm plinth to Ø54mm seam, 17.5mm height)
+        const partB_Geo = new THREE.CylinderGeometry(27.0, 32.0, 17.5, 64);
+        const partB_Mesh = new THREE.Mesh(partB_Geo, matRoyalMetal);
+        partB_Mesh.position.y = 8.75;
+        partB_Group.add(partB_Mesh);
+
+        // Raised Rim 1: Base Plinth Bead (Z = 2.4mm)
+        const plinthRimGeo = new THREE.TorusGeometry(31.4, 0.75, 16, 64);
+        plinthRimGeo.rotateX(Math.PI / 2);
+        const plinthRimMesh = new THREE.Mesh(plinthRimGeo, matRimAccent);
+        plinthRimMesh.position.y = 2.4;
+        partB_Group.add(plinthRimMesh);
+
+        // Lower Greek Key Frieze Band (Z = 2.8 to 5.8mm)
+        const friezeGeoB = new THREE.CylinderGeometry(30.6, 31.4, 3.0, 64, 1, true);
+        const friezeMeshB = new THREE.Mesh(friezeGeoB, matGreekFrieze);
+        friezeMeshB.position.y = 4.3;
+        partB_Group.add(friezeMeshB);
+
+        // Raised Rim 2: Mid Dividing Bead (Z = 6.0mm)
+        const midRimGeoB = new THREE.TorusGeometry(30.2, 0.65, 16, 64);
+        midRimGeoB.rotateX(Math.PI / 2);
+        const midRimMeshB = new THREE.Mesh(midRimGeoB, matRimAccent);
+        midRimMeshB.position.y = 6.0;
+        partB_Group.add(midRimMeshB);
+
+        // Raised Rim 3: Seam Mating Rim (Z = 17.0mm)
+        const seamRimGeoB = new THREE.TorusGeometry(27.2, 0.7, 16, 64);
+        seamRimGeoB.rotateX(Math.PI / 2);
+        const seamRimMeshB = new THREE.Mesh(seamRimGeoB, matRimAccent);
+        seamRimMeshB.position.y = 17.0;
+        partB_Group.add(seamRimMeshB);
+
+        // Conformal Conical Curved Floral Cartouche Segment (Uniform +0.8mm Proud Relief Across Entire Height)
+        // Top Y=17.6mm (R_cone=27.0mm -> R_cart=27.8mm), Bottom Y=5.6mm (R_cone=30.4mm -> R_cart=31.2mm)
+        const cartoucheGeo = new THREE.CylinderGeometry(27.8, 31.2, 12.0, 32, 1, true, -0.30, 0.60);
+        const cartoucheMesh = new THREE.Mesh(cartoucheGeo, matCartouche);
+        cartoucheMesh.position.set(0, 11.6, 0);
+        partB_Group.add(cartoucheMesh);
+
+        // Arched Side Cable Exit Port Trim (at rear Z = -31.0mm)
+        const sidePortTrimGeo = new THREE.BoxGeometry(9.0, 7.0, 3.0);
+        const sidePortTrimMat = new THREE.MeshStandardMaterial({ color: 0x0f141c, roughness: 0.8 });
+        const sidePortTrim = new THREE.Mesh(sidePortTrimGeo, sidePortTrimMat);
+        sidePortTrim.position.set(0, 5.5, -31.0);
+        partB_Group.add(sidePortTrim);
+
+        registerLayer('partB', 'Part B: Conical Pedestal Base', partB_Group, 0, 0, {
+            dims: 'Ø64mm Base Plinth × Ø54mm Seam × 17.5mm Height',
+            role: 'Smooth satin metal body with architectural torus rims, clean oval border line, authentic Edifier 3-flame emblem, and arched side cable exit.',
+            material: '3D Printed PLA/PETG with Royal Metallic Finish'
+        });
+
+        // =============================================================
+        // 2. MAX98357A Amplifier & Dual Wiring Routing
+        // =============================================================
+        const ampGroup = new THREE.Group();
+        const ampPcbGeo = new THREE.BoxGeometry(18.0, 1.6, 20.0);
+        const ampPcbMat = new THREE.MeshStandardMaterial({ color: 0x6a1b9a, roughness: 0.4, metalness: 0.3 });
+        const ampPcb = new THREE.Mesh(ampPcbGeo, ampPcbMat);
+        ampPcb.position.y = 4.0;
+        ampGroup.add(ampPcb);
+
+        const termGeo = new THREE.BoxGeometry(8.0, 9.0, 9.5);
+        const termMat = new THREE.MeshStandardMaterial({ color: 0x1565c0, roughness: 0.5 });
+        const term = new THREE.Mesh(termGeo, termMat);
+        term.position.set(-3.5, 8.5, 4.0);
+        ampGroup.add(term);
+
+        const icGeo = new THREE.BoxGeometry(4.0, 1.0, 4.0);
+        const icMat = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.2, metalness: 0.7 });
+        const ic = new THREE.Mesh(icGeo, icMat);
+        ic.position.set(3.5, 5.0, -2.0);
+        ampGroup.add(ic);
+
+        // Bottom Speaker Wire
+        const wireCurveBottom = new THREE.CatmullRomCurve3([
+            new THREE.Vector3(-3.5, 8.5, 4.0),
+            new THREE.Vector3(-1.0, 3.0, 1.0),
+            new THREE.Vector3(0, -6.0, 0),
+            new THREE.Vector3(0, -18.0, 0)
+        ]);
+        const wireMeshBottom = new THREE.Mesh(new THREE.TubeGeometry(wireCurveBottom, 24, 1.0, 8, false), new THREE.MeshStandardMaterial({ color: 0x222222, roughness: 0.6 }));
+        ampGroup.add(wireMeshBottom);
+
+        // Side Exit Wire (through rear arch)
+        const wireCurveSide = new THREE.CatmullRomCurve3([
+            new THREE.Vector3(3.5, 5.0, -2.0),
+            new THREE.Vector3(1.5, 4.0, -14.0),
+            new THREE.Vector3(0.0, 5.5, -30.0),
+            new THREE.Vector3(0.0, 5.5, -46.0)
+        ]);
+        const wireMeshSide = new THREE.Mesh(new THREE.TubeGeometry(wireCurveSide, 32, 1.3, 8, false), new THREE.MeshStandardMaterial({ color: 0xffaa77, roughness: 0.4 }));
+        ampGroup.add(wireMeshSide);
+
+        registerLayer('amp', 'MAX98357A Mono I2S DAC/Amp & Wires', ampGroup, 3.5, 0.45, {
+            dims: '18mm × 20mm × 10mm (3.2W Class-D)',
+            role: 'Seated inside floor rails. Copper wire routes through rear side arch; black wire routes down into speaker cabinet.',
+            material: 'FR4 PCB + Screw Terminal + Silicone Leads'
+        });
+
+        // =============================================================
+        // 3. 2x M2 Fastening Screws
+        // =============================================================
+        const screwGroup = new THREE.Group();
+        const headGeo = new THREE.CylinderGeometry(2.1, 2.1, 1.6, 16);
+        const shankGeo = new THREE.CylinderGeometry(1.0, 1.0, 6.0, 16);
+        const screwMat = new THREE.MeshStandardMaterial({ color: 0xdcdde1, metalness: 0.95, roughness: 0.15 });
+
+        const makeScrew = (x, z) => {
+            const sg = new THREE.Group();
+            const h = new THREE.Mesh(headGeo, screwMat);
+            h.position.y = -2.25;
+            const s = new THREE.Mesh(shankGeo, screwMat);
+            s.position.y = 1.0;
+            sg.add(h);
+            sg.add(s);
+            sg.position.set(x, 0, z);
+            return sg;
+        };
+
+        screwGroup.add(makeScrew(13.506, -13.506));
+        screwGroup.add(makeScrew(-13.506, 13.506));
+
+        registerLayer('screws', '2× M2 Mounting Screws', screwGroup, 12.5, 0.75, {
+            dims: 'M2 × 5mm / 6mm Screws (2.0mm Web)',
+            role: 'Inserts smoothly through recessed pockets in threaded neck into CrowPanel standoffs. Zero outer bulges and 100% smooth screwing into Part B.',
+            material: 'Nickel-plated high-tensile steel'
+        });
+
+        // =============================================================
+        // 4. Part A: Top Adapter (Smooth Cone with Rims & Spiral Thread)
+        // =============================================================
+        const partA_Group = new THREE.Group();
+
+        // Smooth conical body (Ø54mm seam to Ø50.4mm top, 8.5mm height)
+        const partA_Geo = new THREE.CylinderGeometry(25.2, 27.0, 8.5, 64);
+        const partA_Mesh = new THREE.Mesh(partA_Geo, matRoyalMetal);
+        partA_Mesh.position.y = 4.25;
+        partA_Group.add(partA_Mesh);
+
+        // Seam Mating Rim (Z = 0.5mm)
+        const seamRimGeoA = new THREE.TorusGeometry(27.1, 0.65, 16, 64);
+        seamRimGeoA.rotateX(Math.PI / 2);
+        const seamRimMeshA = new THREE.Mesh(seamRimGeoA, matRimAccent);
+        seamRimMeshA.position.y = 0.5;
+        partA_Group.add(seamRimMeshA);
+
+        // Upper Greek Meander Frieze Band (Z = 1.2 to 4.2mm)
+        const friezeGeoA = new THREE.CylinderGeometry(26.0, 26.6, 3.0, 64, 1, true);
+        const friezeMeshA = new THREE.Mesh(friezeGeoA, matGreekFrieze);
+        friezeMeshA.position.y = 2.7;
+        partA_Group.add(friezeMeshA);
+
+        // Mid Dividing Bead (Z = 4.5mm)
+        const midRimGeoA = new THREE.TorusGeometry(26.1, 0.6, 16, 64);
+        midRimGeoA.rotateX(Math.PI / 2);
+        const midRimMeshA = new THREE.Mesh(midRimGeoA, matRimAccent);
+        midRimMeshA.position.y = 4.5;
+        partA_Group.add(midRimMeshA);
+
+        // Crown Lip Rim (Z = 7.8mm)
+        const crownLipGeo = new THREE.TorusGeometry(25.4, 0.7, 16, 64);
+        crownLipGeo.rotateX(Math.PI / 2);
+        const crownLipMesh = new THREE.Mesh(crownLipGeo, matRimAccent);
+        crownLipMesh.position.y = 7.8;
+        partA_Group.add(crownLipMesh);
+
+        // Male Threaded Spigot Neck (extending down Z = -5.8mm to 0)
+        const maleNeckGeo = new THREE.CylinderGeometry(20.4, 20.4, 5.8, 48, 1, true);
+        const matThreadHighlight = new THREE.MeshStandardMaterial({ color: 0xd97746, metalness: 0.8, roughness: 0.25 });
+        const maleNeck = new THREE.Mesh(maleNeckGeo, matThreadHighlight);
+        maleNeck.position.y = -2.9;
+        partA_Group.add(maleNeck);
+
+        // Broad Helical Bottle-Cap Thread Ribbon
+        const maleThreadGeo = createHelicalThreadGeometry(20.4, 21.8, 4.5, 1.25, -5.4, 96);
+        const maleThreadMesh = new THREE.Mesh(maleThreadGeo, matThreadHighlight);
+        partA_Group.add(maleThreadMesh);
+
+        // Schematic-Accurate Monolithic Screwing Rim (Z = 3.0 to 5.0mm, R = 17.5 to 23.55mm)
+        // Engineered from Eagle BRD layout: 92.4% solid shelf preserved!
+        // Discrete chutes for J34 (UART) & J36 (Audio) on West and J37 (Power/USB) on East.
+        const rimMat = new THREE.MeshStandardMaterial({ color: 0x161c26, side: THREE.DoubleSide, roughness: 0.5 });
+        
+        // Continuous solid rim arcs:
+        // Arc 1: South-East arc (from J37 at East, past T1 at 315° SE, to J36 at West)
+        const rimArc1Geo = new THREE.RingGeometry(17.5, 23.55, 48, 1, -Math.PI * 0.35, Math.PI * 0.95);
+        const rimMesh1 = new THREE.Mesh(rimArc1Geo, rimMat);
+        rimMesh1.rotation.x = Math.PI / 2;
+        rimMesh1.position.y = 5.0;
+        
+        // Arc 2: North arc (from J34 at West, past T2 at 135° NW, to J37 at East)
+        const rimArc2Geo = new THREE.RingGeometry(17.5, 23.55, 36, 1, Math.PI * 1.08, Math.PI * 0.70);
+        const rimMesh2 = new THREE.Mesh(rimArc2Geo, rimMat);
+        rimMesh2.rotation.x = Math.PI / 2;
+        rimMesh2.position.y = 5.0;
+
+        // Arc 3: Solid 3.3mm Radial Support Bridge between J34 and J36 on West (Y in [-0.8, 2.5]mm)
+        const rimBridgeGeo = new THREE.RingGeometry(17.5, 23.55, 16, 1, Math.PI * 0.96, Math.PI * 0.08);
+        const rimBridgeMesh = new THREE.Mesh(rimBridgeGeo, rimMat);
+        rimBridgeMesh.rotation.x = Math.PI / 2;
+        rimBridgeMesh.position.y = 5.0;
+        
+        // U-Slot Standoff Seats at T1 (+13.5, -13.5) and T2 (-13.5, +13.5)
+        const uSlotGeo = new THREE.CylinderGeometry(2.2, 2.2, 2.0, 16, 1, false, 0, Math.PI);
+        const uMat = new THREE.MeshStandardMaterial({ color: 0x11161d, roughness: 0.6 });
+        const u1 = new THREE.Mesh(uSlotGeo, uMat);
+        u1.position.set(13.506, 4.0, -13.506);
+        u1.rotation.y = -Math.PI * 0.25;
+        const u2 = new THREE.Mesh(uSlotGeo, uMat);
+        u2.position.set(-13.506, 4.0, 13.506);
+        u2.rotation.y = Math.PI * 0.75;
+        
+        partA_Group.add(rimMesh1, rimMesh2, rimBridgeMesh, u1, u2);
+
+        registerLayer('partA', 'Part A: Top Adapter (Royal Cap)', partA_Group, 17.5, 1.15, {
+            dims: 'Ø54mm Seam × Ø50.4mm Top (Ø47.1mm Snug Collar)',
+            role: 'Schematic-matched precision design: 92.4% solid screwing shelf preserved with discrete full-depth drop chutes for J34, J36 (West), and J37 (East) wire plugs (R <= 20.5mm, zero thread envelope breach). Open U-slots at T2 (-13.5, +13.5) and T1 (+13.5, -13.5) and vertical access channels allow effortless screw and screwdriver passage while fitting Part B seamlessly.',
+            material: '3D Printed PLA/PETG with Royal Metallic Finish'
+        });
+
+        // =============================================================
+        // 5. CrowPanel ESP32-S3 PCB
+        // =============================================================
+        const pcbGroup = new THREE.Group();
+        const pcbGeo = new THREE.CylinderGeometry(23.5, 23.5, 1.6, 64);
+        const pcbMat = new THREE.MeshStandardMaterial({ color: 0x1e3a1e, roughness: 0.5, metalness: 0.2 });
+        const pcbMesh = new THREE.Mesh(pcbGeo, pcbMat);
+        pcbMesh.position.y = 0.8;
+        pcbGroup.add(pcbMesh);
+
+        const shieldGeo = new THREE.BoxGeometry(16.0, 2.4, 18.0);
+        const shieldMat = new THREE.MeshStandardMaterial({ color: 0xbdc3c7, metalness: 0.9, roughness: 0.2 });
+        const shieldMesh = new THREE.Mesh(shieldGeo, shieldMat);
+        shieldMesh.position.set(3.7, 2.0, -9.3);
+        pcbGroup.add(shieldMesh);
+
+        const jstGeo = new THREE.BoxGeometry(6.5, 4.0, 5.0);
+        const jstMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.4 });
+        const jstAudio = new THREE.Mesh(jstGeo, jstMat);
+        jstAudio.position.set(-13.0, 2.8, -4.5);
+        const jstUart = new THREE.Mesh(jstGeo, jstMat);
+        jstUart.position.set(-13.0, 2.8, 6.15);
+        const jstPower = new THREE.Mesh(jstGeo, jstMat);
+        jstPower.position.set(12.0, 2.8, 10.75);
+        pcbGroup.add(jstAudio);
+        pcbGroup.add(jstUart);
+        pcbGroup.add(jstPower);
+
+        registerLayer('pcb', 'ESP32-S3 CrowPanel Mainboard', pcbGroup, 23.0, 1.6, {
+            dims: 'Ø47.0mm Circular PCB (1.6mm FR4)',
+            role: 'Xtensa Dual-Core @ 240MHz, 16MB Flash, 8MB PSRAM, CST816D touch IC, J36 Audio and J34 UART ports (West), J37 Power port (East).',
+            material: 'High-TG FR4 Immersion Gold'
+        });
+
+        // =============================================================
+        // 6. Frosted Acrylic Light Diffuser Ring (5x WS2812B RGB)
+        // =============================================================
+        const lightGroup = new THREE.Group();
+        const lightGeo = new THREE.CylinderGeometry(23.5, 23.5, 3.0, 64, 1, true);
+        const lightMat = new THREE.MeshPhysicalMaterial({
+            color: 0xffaa55,
+            emissive: 0xff7722,
+            emissiveIntensity: 0.35,
+            transparent: true,
+            opacity: 0.65,
+            roughness: 0.2,
+            transmission: 0.6
+        });
+        const lightMesh = new THREE.Mesh(lightGeo, lightMat);
+        lightMesh.position.y = 1.5;
+        lightGroup.add(lightMesh);
+
+        registerLayer('light', '5× RGB Light Diffuser Ring', lightGroup, 25.0, 1.9, {
+            dims: 'Ø47mm Outer Ring × 3mm Height',
+            role: 'Smooths the 5 addressable WS2812B LEDs for warm golden breathing, volume VU, and audio ambience.',
+            material: 'Frosted Translucent Optical Acrylic'
+        });
+
+        // =============================================================
+        // 7. Aluminum Knurled Rotary Dial Bezel
+        // =============================================================
+        const knobGroup = new THREE.Group();
+        const knobGeo = new THREE.CylinderGeometry(24.0, 24.0, 7.5, 64, 1, true);
+        const knobMat = new THREE.MeshStandardMaterial({
+            map: createKnurlingTexture(),
+            metalness: 0.85,
+            roughness: 0.35,
+            color: 0xcccccc
+        });
+        const knobMesh = new THREE.Mesh(knobGeo, knobMat);
+        knobMesh.position.y = 3.75;
+        knobGroup.add(knobMesh);
+
+        registerLayer('knob', 'Knurled Rotary Knob Bezel', knobGroup, 28.0, 2.25, {
+            dims: 'Ø48mm Outer × 7.5mm Height',
+            role: 'Knurled CNC aluminum alloy knob connected to EC3501 30-pulse rotary encoder.',
+            material: 'Anodized 6061 Aluminum Alloy'
+        });
+
+        // =============================================================
+        // 8. GC9A01 Round IPS Display Screen
+        // =============================================================
+        const screenGroup = new THREE.Group();
+        const screenGeo = new THREE.CylinderGeometry(21.5, 21.5, 0.8, 64);
+        const screenMat = [
+            new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.5 }),
+            new THREE.MeshBasicMaterial({ map: createRadioDisplayTexture() }),
+            new THREE.MeshStandardMaterial({ color: 0x111111 })
+        ];
+        const screenMesh = new THREE.Mesh(screenGeo, screenMat);
+        screenMesh.position.y = 0.4;
+        screenGroup.add(screenMesh);
+
+        registerLayer('screen', 'GC9A01 IPS Round Display', screenGroup, 34.5, 2.6, {
+            dims: '1.28-inch Round (240×240 IPS RGB565)',
+            role: 'Active full-color capacitive touch screen running LovyanGFX & LVGL 8.4 EDIFIER Radio UI.',
+            material: 'IPS Liquid Crystal Display Panel'
+        });
+
+        // =============================================================
+        // 9. Tempered Glass Cover
+        // =============================================================
+        const glassGroup = new THREE.Group();
+        const glassGeo = new THREE.CylinderGeometry(22.0, 22.0, 1.2, 64);
+        const glassMat = new THREE.MeshPhysicalMaterial({
+            color: 0xffffff,
+            transparent: true,
+            opacity: 0.45,
+            roughness: 0.05,
+            transmission: 0.9,
+            reflectivity: 0.9
+        });
+        const glassMesh = new THREE.Mesh(glassGeo, glassMat);
+        glassMesh.position.y = 0.6;
+        glassGroup.add(glassMesh);
+
+        registerLayer('glass', 'Optical Round Glass Cover', glassGroup, 36.5, 2.9, {
+            dims: 'Ø44mm × 1.2mm Tempered Glass',
+            role: 'Optical protective glass lens bonded to CST816D single-touch capacitive sensor.',
+            material: 'Chemically Strengthened Optical Glass'
+        });
+
+        /* -------------------------------------------------------------
+         * EXPLOSION & SPIRAL TWIST CONTROLLER
+         * ------------------------------------------------------------- */
+        let explosionProgress = 0.0;
+        let isAutoExploding = false;
+        let isTurntable = false;
+        let isXray = false;
+        let autoDirection = 1;
+
+        const explodeSlider = document.getElementById('explodeSlider');
+        const explodeVal = document.getElementById('explodeVal');
+        const btnAutoExplode = document.getElementById('btnAutoExplode');
+        const btnTwistLock = document.getElementById('btnTwistLock');
+        const btnXray = document.getElementById('btnXray');
+        const btnRotate = document.getElementById('btnRotate');
+
+        function updateExplosion(val) {
+            explosionProgress = val;
+            explodeSlider.value = Math.round(val * 100);
+            explodeVal.textContent = Math.round(val * 100) + '%';
+
+            const maxSpacing = 28.0;
+            assemblyLayers.forEach(layer => {
+                const targetY = layer.baseY + layer.multiplier * maxSpacing * explosionProgress;
+                layer.object.position.y = targetY;
+
+                // Spiral twist action: Part A rotates 450 deg as it engages/disengages
+                if (layer.id === 'partA' || layer.id === 'pcb' || layer.id === 'knob' || layer.id === 'screen' || layer.id === 'glass' || layer.id === 'screws' || layer.id === 'light') {
+                    if (explosionProgress < 0.25) {
+                        const t = explosionProgress / 0.25;
+                        layer.object.rotation.y = (1.0 - t) * (Math.PI * 2.5);
+                    } else {
+                        layer.object.rotation.y = 0;
+                    }
+                }
+            });
+        }
+
+        explodeSlider.addEventListener('input', (e) => {
+            isAutoExploding = false;
+            btnAutoExplode.classList.remove('active');
+            updateExplosion(parseFloat(e.target.value) / 100.0);
+        });
+
+        btnAutoExplode.addEventListener('click', () => {
+            isAutoExploding = !isAutoExploding;
+            btnAutoExplode.classList.toggle('active', isAutoExploding);
+        });
+
+        btnTwistLock.addEventListener('click', () => {
+            isAutoExploding = false;
+            btnAutoExplode.classList.remove('active');
+            
+            const targetVal = explosionProgress < 0.15 ? 0.35 : 0.0;
+            let startVal = explosionProgress;
+            let t = 0;
+            function animTwist() {
+                t += 0.04;
+                const cur = startVal + (targetVal - startVal) * t;
+                updateExplosion(cur);
+                if (t < 1.0) {
+                    requestAnimationFrame(animTwist);
+                } else {
+                    updateExplosion(targetVal);
+                }
+            }
+            animTwist();
+        });
+
+        btnRotate.addEventListener('click', () => {
+            isTurntable = !isTurntable;
+            btnRotate.classList.toggle('active', isTurntable);
+        });
+
+        btnXray.addEventListener('click', () => {
+            isXray = !isXray;
+            btnXray.classList.toggle('active', isXray);
+
+            [matRoyalMetal, matRimAccent].forEach(mat => {
+                mat.transparent = isXray;
+                mat.opacity = isXray ? 0.35 : 1.0;
+            });
+        });
+
+        /* -------------------------------------------------------------
+         * CAMERA VIEW PRESETS
+         * ------------------------------------------------------------- */
+        function setCameraView(pos, target, btnId) {
+            document.querySelectorAll('.cam-btn').forEach(b => b.classList.remove('active'));
+            if (btnId) document.getElementById(btnId).classList.add('active');
+
+            const startPos = camera.position.clone();
+            const startTarget = controls.target.clone();
+            let t = 0;
+
+            function animCam() {
+                t += 0.05;
+                camera.position.lerpVectors(startPos, pos, t);
+                controls.target.lerpVectors(startTarget, target, t);
+                if (t < 1.0) {
+                    requestAnimationFrame(animCam);
+                }
+            }
+            animCam();
+        }
+
+        document.getElementById('viewIso').addEventListener('click', () => {
+            setCameraView(new THREE.Vector3(80, 65, 125), new THREE.Vector3(0, 30, 0), 'viewIso');
+        });
+
+        document.getElementById('viewFront').addEventListener('click', () => {
+            setCameraView(new THREE.Vector3(0, 18, 95), new THREE.Vector3(0, 14, 0), 'viewFront');
+        });
+
+        document.getElementById('viewSidePort').addEventListener('click', () => {
+            setCameraView(new THREE.Vector3(0, 18, -120), new THREE.Vector3(0, 14, -10), 'viewSidePort');
+        });
+
+        document.getElementById('viewTop').addEventListener('click', () => {
+            setCameraView(new THREE.Vector3(0, 145, 0.1), new THREE.Vector3(0, 20, 0), 'viewTop');
+        });
+
+        document.getElementById('viewSection').addEventListener('click', () => {
+            setCameraView(new THREE.Vector3(105, 30, 0), new THREE.Vector3(0, 28, 0), 'viewSection');
+            if (!isXray) btnXray.click();
+        });
+
+        document.getElementById('viewBottom').addEventListener('click', () => {
+            setCameraView(new THREE.Vector3(0, -85, 55), new THREE.Vector3(0, 10, 0), 'viewBottom');
+        });
+
+        /* -------------------------------------------------------------
+         * INTERACTIVE PART INSPECTOR & SELECTION
+         * ------------------------------------------------------------- */
+        const detailCard = document.getElementById('detailCard');
+        const cardTitle = document.getElementById('cardTitle');
+        const cardDesc = document.getElementById('cardDesc');
+        const cardSpecs = document.getElementById('cardSpecs');
+
+        function selectPart(id) {
+            document.querySelectorAll('.part-item').forEach(el => {
+                el.classList.toggle('selected', el.getAttribute('data-id') === id);
+            });
+
+            const layer = assemblyLayers.find(l => l.id === id);
+            if (layer && layer.info) {
+                detailCard.style.display = 'block';
+                cardTitle.textContent = layer.name;
+                cardDesc.textContent = layer.info.role;
+                cardSpecs.innerHTML = `<strong>Dimensions:</strong> ${layer.info.dims}<br><strong>Material:</strong> ${layer.info.material}`;
+
+                const origScale = layer.object.scale.clone();
+                layer.object.scale.multiplyScalar(1.04);
+                setTimeout(() => layer.object.scale.copy(origScale), 200);
+            }
+        }
+
+        document.querySelectorAll('.part-item').forEach(item => {
+            item.addEventListener('click', () => {
+                selectPart(item.getAttribute('data-id'));
+            });
+        });
+
+        const raycaster = new THREE.Raycaster();
+        const mouse = new THREE.Vector2();
+
+        window.addEventListener('pointerdown', (e) => {
+            if (e.target.closest('header, .control-dock, .parts-sidebar, .camera-views, #detailCard')) return;
+            mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
+            mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
+
+            raycaster.setFromCamera(mouse, camera);
+            const intersects = raycaster.intersectObjects(partsGroup.children, true);
+
+            if (intersects.length > 0) {
+                let hitObj = intersects[0].object;
+                while (hitObj.parent && hitObj.parent !== partsGroup) {
+                    hitObj = hitObj.parent;
+                }
+                const found = assemblyLayers.find(l => l.object === hitObj);
+                if (found) {
+                    selectPart(found.id);
+                }
+            }
+        });
+
+        /* -------------------------------------------------------------
+         * RENDER LOOP & ANIMATION
+         * ------------------------------------------------------------- */
+        const clock = new THREE.Clock();
+
+        function animate() {
+            requestAnimationFrame(animate);
+
+            const delta = clock.getDelta();
+
+            if (isAutoExploding) {
+                explosionProgress += autoDirection * delta * 0.4;
+                if (explosionProgress >= 1.0) {
+                    explosionProgress = 1.0;
+                    autoDirection = -1;
+                } else if (explosionProgress <= 0.0) {
+                    explosionProgress = 0.0;
+                    autoDirection = 1;
+                }
+                updateExplosion(explosionProgress);
+            }
+
+            if (isTurntable) {
+                partsGroup.rotation.y += delta * 0.45;
+            }
+
+            controls.update();
+            renderer.render(scene, camera);
+        }
+
+        updateExplosion(0.0);
+        selectPart('partB');
+        animate();
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+    </script>
+</body>
+</html>

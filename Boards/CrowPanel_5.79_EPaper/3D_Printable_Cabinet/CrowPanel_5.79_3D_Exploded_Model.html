@@ -1,0 +1,1165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CrowPanel 5.79" E-Paper Smart Clock & Audio Cabinet — 3D Exploded Assembly</title>
+    <!-- Modern Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+    <!-- Three.js and OrbitControls -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <style>
+        :root {
+            --bg-color: #0b0f19;
+            --panel-bg: rgba(18, 24, 38, 0.90);
+            --panel-border: rgba(255, 255, 255, 0.12);
+            --accent-cyan: #00e5ff;
+            --accent-orange: #ff7043;
+            --accent-emerald: #10b981;
+            --text-primary: #f0f4fc;
+            --text-secondary: #94a3b8;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            user-select: none;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-primary);
+            font-family: 'Outfit', sans-serif;
+            overflow: hidden;
+            width: 100vw;
+            height: 100vh;
+        }
+
+        #canvas3d {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 1;
+        }
+
+        header {
+            position: absolute;
+            top: 20px;
+            left: 24px;
+            z-index: 10;
+            background: var(--panel-bg);
+            backdrop-filter: blur(16px);
+            border: 1px solid var(--panel-border);
+            padding: 14px 22px;
+            border-radius: 16px;
+            box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+            pointer-events: auto;
+        }
+
+        header h1 {
+            font-size: 1.18rem;
+            font-weight: 800;
+            letter-spacing: -0.02em;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        header h1 span.badge-slim {
+            background: linear-gradient(135deg, #00e5ff, #0284c7);
+            color: #000;
+            font-size: 0.68rem;
+            font-weight: 800;
+            padding: 3px 8px;
+            border-radius: 8px;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        header h1 span.badge-epaper {
+            background: linear-gradient(135deg, #10b981, #059669);
+            color: #fff;
+            font-size: 0.68rem;
+            font-weight: 800;
+            padding: 3px 8px;
+            border-radius: 8px;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        header h1 span.badge-audio {
+            background: linear-gradient(135deg, #ff7043, #d84315);
+            color: #fff;
+            font-size: 0.68rem;
+            font-weight: 800;
+            padding: 3px 8px;
+            border-radius: 8px;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        header p {
+            font-size: 0.78rem;
+            color: var(--text-secondary);
+            margin-top: 4px;
+        }
+
+        .camera-views {
+            position: absolute;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 10;
+            background: var(--panel-bg);
+            backdrop-filter: blur(12px);
+            border: 1px solid var(--panel-border);
+            padding: 6px 12px;
+            border-radius: 30px;
+            display: flex;
+            gap: 6px;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+            pointer-events: auto;
+        }
+
+        .cam-btn {
+            background: transparent;
+            border: none;
+            color: var(--text-secondary);
+            font-size: 0.75rem;
+            font-weight: 600;
+            padding: 5px 12px;
+            border-radius: 20px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .cam-btn:hover, .cam-btn.active {
+            color: var(--text-primary);
+            background: rgba(255, 255, 255, 0.14);
+        }
+
+        .parts-sidebar {
+            position: absolute;
+            top: 20px;
+            right: 24px;
+            bottom: 100px;
+            width: 325px;
+            z-index: 10;
+            background: var(--panel-bg);
+            backdrop-filter: blur(16px);
+            border: 1px solid var(--panel-border);
+            border-radius: 16px;
+            padding: 16px;
+            box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            overflow-y: auto;
+            pointer-events: auto;
+        }
+
+        .parts-sidebar h2 {
+            font-size: 0.85rem;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            color: var(--text-secondary);
+            margin-bottom: 4px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .part-item {
+            background: rgba(255, 255, 255, 0.04);
+            border: 1px solid rgba(255, 255, 255, 0.06);
+            padding: 9px 12px;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            display: flex;
+            flex-direction: column;
+            gap: 3px;
+        }
+
+        .part-item:hover {
+            background: rgba(255, 255, 255, 0.09);
+            border-color: rgba(255, 255, 255, 0.2);
+        }
+
+        .part-item.selected {
+            background: rgba(0, 229, 255, 0.16);
+            border-color: var(--accent-cyan);
+            box-shadow: 0 0 12px rgba(0, 229, 255, 0.25);
+        }
+
+        .part-title {
+            font-size: 0.84rem;
+            font-weight: 700;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .part-tag {
+            font-size: 0.65rem;
+            font-family: 'JetBrains Mono', monospace;
+            padding: 2px 6px;
+            border-radius: 4px;
+            background: rgba(255, 255, 255, 0.1);
+            color: var(--text-secondary);
+        }
+
+        .part-desc {
+            font-size: 0.72rem;
+            color: var(--text-secondary);
+            line-height: 1.35;
+        }
+
+        .control-dock {
+            position: absolute;
+            bottom: 24px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 10;
+            background: var(--panel-bg);
+            backdrop-filter: blur(16px);
+            border: 1px solid var(--panel-border);
+            padding: 12px 24px;
+            border-radius: 20px;
+            box-shadow: 0 16px 40px rgba(0, 0, 0, 0.5);
+            display: flex;
+            align-items: center;
+            gap: 20px;
+            pointer-events: auto;
+        }
+
+        .slider-group {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            min-width: 250px;
+        }
+
+        .slider-header {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.75rem;
+            font-weight: 700;
+            color: var(--text-secondary);
+            letter-spacing: 0.05em;
+        }
+
+        .slider-header span.val {
+            color: var(--accent-cyan);
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        input[type="range"] {
+            -webkit-appearance: none;
+            width: 100%;
+            height: 6px;
+            border-radius: 3px;
+            background: rgba(255, 255, 255, 0.15);
+            outline: none;
+        }
+
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background: var(--accent-cyan);
+            cursor: pointer;
+            box-shadow: 0 0 10px var(--accent-cyan);
+        }
+
+        .btn-group {
+            display: flex;
+            gap: 8px;
+        }
+
+        .btn {
+            background: rgba(255, 255, 255, 0.08);
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            color: var(--text-primary);
+            font-size: 0.8rem;
+            font-weight: 600;
+            padding: 8px 14px;
+            border-radius: 12px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            transition: all 0.2s ease;
+        }
+
+        .btn:hover, .btn.active {
+            background: rgba(0, 229, 255, 0.2);
+            border-color: var(--accent-cyan);
+            color: #fff;
+        }
+
+        #detailCard {
+            position: absolute;
+            left: 24px;
+            bottom: 24px;
+            width: 320px;
+            z-index: 10;
+            background: var(--panel-bg);
+            backdrop-filter: blur(16px);
+            border: 1px solid var(--panel-border);
+            padding: 16px;
+            border-radius: 16px;
+            box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+            display: none;
+            pointer-events: auto;
+        }
+
+        #detailCard h3 {
+            font-size: 1.0rem;
+            font-weight: 800;
+            color: var(--accent-cyan);
+            margin-bottom: 6px;
+        }
+
+        #detailCard p {
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+            line-height: 1.4;
+            margin-bottom: 8px;
+        }
+
+        #detailCard .specs-list {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.72rem;
+            color: var(--text-primary);
+            background: rgba(0, 0, 0, 0.35);
+            padding: 8px 10px;
+            border-radius: 8px;
+            line-height: 1.5;
+        }
+    </style>
+</head>
+<body>
+    <div id="canvas3d"></div>
+
+    <header>
+        <h1>
+            CrowPanel 5.79" Smart Clock 
+            <span class="badge-slim">Minimal Bezel 173×62.5mm</span>
+            <span class="badge-epaper">272×792 EPD</span>
+            <span class="badge-audio">Audio Cabinet</span>
+        </h1>
+        <p>Spring-Mode Quick Release Bracket • Flush Closed Fit (28mm Deep Cavity) • Zero Outside Projection</p>
+    </header>
+
+    <div class="camera-views">
+        <button class="cam-btn active" id="viewIso">Isometric</button>
+        <button class="cam-btn" id="viewFront">Front Screen</button>
+        <button class="cam-btn" id="viewBack">Rear Buttons &amp; Grille</button>
+        <button class="cam-btn" id="viewPorts">Bottom Ports</button>
+        <button class="cam-btn" id="viewSection">Internal Stack</button>
+        <button class="cam-btn" id="viewSpring">Spring Latch Zoom</button>
+    </div>
+
+    <div class="parts-sidebar">
+        <h2>Assembly Stack <span style="font-size:0.7rem; color:var(--text-secondary);">8 Subsystems</span></h2>
+        
+        <div class="part-item selected" data-id="frontBezel">
+            <div class="part-title"><span>1. Slim Front Bezel</span><span class="part-tag">SINGLE BOSS</span></div>
+            <div class="part-desc">173×62.5×14mm minimal frame with 140.5×48.5mm beveled window, side dial slot, exactly 1 screw boss per corner, and internal spring detents</div>
+        </div>
+
+        <div class="part-item" data-id="epaperBoard">
+            <div class="part-title"><span style="color:var(--accent-emerald);">2. CrowPanel 5.79" EPD</span><span class="part-tag">ESP32-S3</span></div>
+            <div class="part-desc">272×792 AM E-Paper, ESP32-S3-WROOM-1-N8R8 (8MB PSRAM), USB-C, MicroSD, 2 rear factory M3 brass inserts</div>
+        </div>
+
+        <div class="part-item" data-id="mountingBracket">
+            <div class="part-title"><span style="color:#10b981;">3. Spring-Mode Bracket</span><span class="part-tag">PINCH-RELEASE</span></div>
+            <div class="part-desc">4 cantilever spring arms with 22mm flexure relief slots, finger pinch pads, and bi-directional ramps. Squeeze to release anytime!</div>
+        </div>
+
+        <div class="part-item" data-id="batteries">
+            <div class="part-title"><span style="color:var(--accent-cyan);">4. 2× 18650 Battery Bay</span><span class="part-tag">DEEP CAVITY</span></div>
+            <div class="part-desc">100% enclosed inside 25.8mm cavity with 7.3mm clear headroom! 72×40mm cradle with top wire exit and zero speaker overlap</div>
+        </div>
+
+        <div class="part-item" data-id="amp">
+            <div class="part-title"><span>5. MAX98357A I2S DAC/Amp</span><span class="part-tag">CLASS-D</span></div>
+            <div class="part-desc">3.2W mono digital audio amplifier seated in far-left retention rails, wired to ESP32-S3 I2S bus</div>
+        </div>
+
+        <div class="part-item" data-id="speaker">
+            <div class="part-title"><span style="color:var(--accent-orange);">6. 40mm Round Speaker</span><span class="part-tag">SHALLOW RIM</span></div>
+            <div class="part-desc">Drops into shallow 2.5mm retention rim on back door (no deep cup) against rear acoustic grille</div>
+        </div>
+
+        <div class="part-item" data-id="rearCabinet">
+            <div class="part-title"><span>7. Deep Rear Cabinet (28mm)</span><span class="part-tag">WALL / DESK</span></div>
+            <div class="part-desc">28mm depth (25.8mm cavity), separate battery cradle, non-merging keyholes, 10mm button guide tubes, and 4 corner screws</div>
+        </div>
+
+        <div class="part-item" data-id="buttons">
+            <div class="part-title"><span style="color:var(--accent-orange);">8. Rear Boot &amp; Reset Buttons</span><span class="part-tag">RIGID GUIDES</span></div>
+            <div class="part-desc">Captive plungers with rigid 16mm guide stems and 5.5mm contact tips actuated directly from rear face</div>
+        </div>
+    </div>
+
+    <div id="detailCard">
+        <h3 id="cardTitle">Part Details</h3>
+        <p id="cardDesc">Click any part or drag the slider to explore the assembly.</p>
+        <div class="specs-list" id="cardSpecs">Specs: --</div>
+    </div>
+
+    <div class="control-dock">
+        <div class="slider-group">
+            <div class="slider-header">
+                <span>EXPLODED VIEW EXPANSION</span>
+                <span class="val" id="explodeVal">0%</span>
+            </div>
+            <input type="range" id="explodeSlider" min="0" max="100" value="0">
+        </div>
+
+        <div class="btn-group">
+            <button class="btn" id="btnAutoExplode">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+                Animate
+            </button>
+            <button class="btn" id="btnXray">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="2" x2="12" y2="22"></line></svg>
+                X-Ray
+            </button>
+            <button class="btn" id="btnRotate">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"></circle><path d="M12 2v3M12 19v3M2 12h3M19 12h3"></path></svg>
+                Turntable
+            </button>
+        </div>
+    </div>
+
+    <script>
+        const container = document.getElementById('canvas3d');
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x0b0f19);
+        scene.fog = new THREE.FogExp2(0x0b0f19, 0.0028);
+
+        const camera = new THREE.PerspectiveCamera(40, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.set(110, 75, 190);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+        renderer.toneMapping = THREE.ACESFilmicToneMapping;
+        renderer.toneMappingExposure = 1.25;
+        container.appendChild(renderer.domElement);
+
+        const controls = new THREE.OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.dampingFactor = 0.06;
+        controls.maxPolarAngle = Math.PI / 2 + 0.15;
+        controls.minDistance = 30;
+        controls.maxDistance = 500;
+        controls.target.set(0, 0, 0);
+
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.75);
+        scene.add(ambientLight);
+
+        const keyLight = new THREE.DirectionalLight(0xfff5ea, 1.35);
+        keyLight.position.set(80, 120, 100);
+        keyLight.castShadow = true;
+        keyLight.shadow.mapSize.width = 2048;
+        keyLight.shadow.mapSize.height = 2048;
+        keyLight.shadow.bias = -0.0001;
+        scene.add(keyLight);
+
+        const fillLight = new THREE.DirectionalLight(0x88bbff, 0.55);
+        fillLight.position.set(-90, 60, -80);
+        scene.add(fillLight);
+
+        const bottomRim = new THREE.DirectionalLight(0x00e5ff, 0.35);
+        bottomRim.position.set(0, -70, 50);
+        scene.add(bottomRim);
+
+        const grid = new THREE.GridHelper(300, 30, 0x00e5ff, 0x1f2937);
+        grid.position.y = -42;
+        grid.material.opacity = 0.25;
+        grid.material.transparent = true;
+        scene.add(grid);
+
+        function createEPaperScreenTexture() {
+            const canvas = document.createElement('canvas');
+            canvas.width = 1024;
+            canvas.height = 352;
+            const ctx = canvas.getContext('2d');
+
+            ctx.fillStyle = '#eceee9';
+            ctx.fillRect(0, 0, 1024, 352);
+
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.02)';
+            for (let i = 0; i < 4000; i++) {
+                ctx.fillRect(Math.random() * 1024, Math.random() * 352, 2, 2);
+            }
+
+            ctx.strokeStyle = '#111111';
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            ctx.moveTo(30, 48);
+            ctx.lineTo(994, 48);
+            ctx.stroke();
+
+            ctx.fillStyle = '#111111';
+            ctx.font = '600 20px Outfit, sans-serif';
+            ctx.fillText('Budaka, Florida', 34, 36);
+
+            ctx.font = '700 22px Outfit, sans-serif';
+            ctx.textAlign = 'center';
+            ctx.fillText('10:25 AM • WED OCT 22', 512, 36);
+
+            ctx.textAlign = 'right';
+            ctx.font = '600 18px "JetBrains Mono", monospace';
+            ctx.fillText('⚡ 94% • WiFi • 3.92V', 990, 36);
+
+            ctx.textAlign = 'left';
+            ctx.font = '800 84px Outfit, sans-serif';
+            ctx.fillText('10:25', 40, 155);
+
+            ctx.font = '600 26px Outfit, sans-serif';
+            ctx.fillText('24°C Sunny • Hum 58%', 44, 205);
+
+            ctx.beginPath();
+            ctx.arc(360, 135, 24, 0, Math.PI * 2);
+            ctx.fillStyle = '#111111';
+            ctx.fill();
+
+            ctx.strokeStyle = '#333333';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(460, 65);
+            ctx.lineTo(460, 320);
+            ctx.stroke();
+
+            ctx.fillStyle = '#111111';
+            ctx.font = '800 22px Outfit, sans-serif';
+            ctx.fillText('📻 INTERNET RADIO (I2S DAC)', 490, 95);
+
+            ctx.font = '800 38px Outfit, sans-serif';
+            ctx.fillText('AIR Thrissur 630 AM', 490, 145);
+
+            ctx.font = '500 22px Outfit, sans-serif';
+            ctx.fillStyle = '#444444';
+            ctx.fillText('Live Stream • 128 kbps AAC • Stereo', 490, 185);
+
+            ctx.fillStyle = '#cccccc';
+            ctx.fillRect(490, 215, 480, 10);
+            ctx.fillStyle = '#111111';
+            ctx.fillRect(490, 215, 320, 10);
+
+            ctx.font = '600 18px "JetBrains Mono", monospace';
+            ctx.fillStyle = '#222222';
+            ctx.fillText('Vol 80% • 40mm Speaker • Dual 18650 Batt', 490, 265);
+            ctx.fillText('ESP32-S3 • 8MB PSRAM • IP: 192.168.1.108', 490, 298);
+
+            return new THREE.CanvasTexture(canvas);
+        }
+
+        const matBezelWhite = new THREE.MeshStandardMaterial({ color: 0xf2f4f7, roughness: 0.35, metalness: 0.1 });
+        const matBracket = new THREE.MeshStandardMaterial({ color: 0x10b981, roughness: 0.4, metalness: 0.2 });
+        const matSpringPad = new THREE.MeshStandardMaterial({ color: 0x34d399, roughness: 0.35, metalness: 0.3 });
+        const matSlotDark = new THREE.MeshBasicMaterial({ color: 0x050811 });
+        const matCabinetDark = new THREE.MeshStandardMaterial({ color: 0x181e28, roughness: 0.45, metalness: 0.25 });
+        const matEPaperScreen = new THREE.MeshBasicMaterial({ map: createEPaperScreenTexture() });
+        const matPCB = new THREE.MeshStandardMaterial({ color: 0x1b4332, roughness: 0.5, metalness: 0.2 });
+        const matBatteryCell = new THREE.MeshStandardMaterial({ color: 0x00bcd4, metalness: 0.85, roughness: 0.25 });
+        const matBatteryRing = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.6 });
+        const matSpeakerCone = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.35, metalness: 0.5 });
+        const matSpeakerMagnet = new THREE.MeshStandardMaterial({ color: 0x37474f, metalness: 0.9, roughness: 0.2 });
+        const matScrew = new THREE.MeshStandardMaterial({ color: 0xdcdde1, metalness: 0.95, roughness: 0.15 });
+        const matButtonBoot = new THREE.MeshStandardMaterial({ color: 0xff7043, roughness: 0.3 });
+        const matButtonReset = new THREE.MeshStandardMaterial({ color: 0x00e5ff, roughness: 0.3 });
+
+        const partsGroup = new THREE.Group();
+        scene.add(partsGroup);
+
+        const assemblyLayers = [];
+
+        function registerLayer(id, name, object, baseOffset, explodeMultiplier, info) {
+            object.castShadow = true;
+            object.receiveShadow = true;
+            partsGroup.add(object);
+            assemblyLayers.push({ id, name, object, baseZ: baseOffset, multiplier: explodeMultiplier, info });
+        }
+
+        // =========================================================================
+        // 1. Slim Front Bezel (Single Boss per Corner, Z = 0 to +14mm)
+        // =========================================================================
+        const bezelGroup = new THREE.Group();
+        const topBar = new THREE.Mesh(new THREE.BoxGeometry(173.0, 7.0, 14.0), matBezelWhite);
+        topBar.position.set(0, 27.75, 7.0);
+        const botBar = new THREE.Mesh(new THREE.BoxGeometry(173.0, 7.0, 14.0), matBezelWhite);
+        botBar.position.set(0, -27.75, 7.0);
+        const leftBar = new THREE.Mesh(new THREE.BoxGeometry(16.25, 48.5, 14.0), matBezelWhite);
+        leftBar.position.set(-78.375, 0, 7.0);
+        const rightBar = new THREE.Mesh(new THREE.BoxGeometry(16.25, 48.5, 14.0), matBezelWhite);
+        rightBar.position.set(78.375, 0, 7.0);
+        bezelGroup.add(topBar, botBar, leftBar, rightBar);
+
+        // 4x EXACTLY ONE SINGLE SCREW BOSS PER CORNER
+        for (let mx of [-1, 1]) {
+            for (let my of [-1, 1]) {
+                const cboss = new THREE.Mesh(new THREE.CylinderGeometry(3.5, 3.5, 12.0, 24), matBezelWhite);
+                cboss.rotation.x = Math.PI / 2;
+                cboss.position.set(mx * 82.0, my * 26.75, 6.0);
+                bezelGroup.add(cboss);
+            }
+        }
+
+        // Side dial slot on right bar
+        const dialSlotMesh = new THREE.Mesh(new THREE.BoxGeometry(4.0, 14.0, 10.0), matSlotDark);
+        dialSlotMesh.position.set(86.5, 0.0, 7.0);
+        bezelGroup.add(dialSlotMesh);
+
+        // 4x Internal Spring Receiver Detents (cut into bezel inner rim at Z = 2.0)
+        for (let sx of [-28.0, 28.0]) {
+            const detent = new THREE.Mesh(new THREE.BoxGeometry(8.5, 1.6, 3.6), matSlotDark);
+            detent.position.set(sx, 24.25, 2.0);
+            bezelGroup.add(detent);
+        }
+        for (let sx of [-12.0, 12.0]) {
+            const detent = new THREE.Mesh(new THREE.BoxGeometry(8.5, 1.6, 3.6), matSlotDark);
+            detent.position.set(sx, -24.25, 2.0);
+            bezelGroup.add(detent);
+        }
+
+        registerLayer('frontBezel', 'Slim Minimal Front Bezel', bezelGroup, 0.0, 1.60, {
+            dims: '173.0mm × 62.5mm × 14.0mm',
+            role: 'Minimalist white frame with 140.5×48.5mm beveled window, side dial slot, exactly 1 SINGLE screw boss per corner, and internal spring detents.',
+            material: '3D Printed PLA / PETG (White Satin)'
+        });
+
+        // =========================================================================
+        // 2. CrowPanel 5.79" Board & E-Paper Screen (Z = 4.4 to 12.0mm)
+        // =========================================================================
+        const epaperGroup = new THREE.Group();
+        const epFrame = new THREE.Mesh(new THREE.BoxGeometry(168.0, 57.5, 5.0), new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.3 }));
+        epFrame.position.z = 9.5;
+        epaperGroup.add(epFrame);
+
+        const epScreen = new THREE.Mesh(new THREE.PlaneGeometry(139.0, 47.7), matEPaperScreen);
+        epScreen.position.set(0, 0, 12.05);
+        epaperGroup.add(epScreen);
+
+        const pcbMesh = new THREE.Mesh(new THREE.BoxGeometry(168.0, 57.0, 1.6), matPCB);
+        pcbMesh.position.z = 6.2;
+        epaperGroup.add(pcbMesh);
+
+        // Tactile switches on back of PCB (K1 Boot @ 40.48, K2 Reset @ 54.18)
+        const swBoot = new THREE.Mesh(new THREE.BoxGeometry(4.5, 4.5, 2.0), new THREE.MeshStandardMaterial({ color: 0x333333, metalness: 0.8 }));
+        swBoot.position.set(40.48, 23.27, 4.4);
+        const swReset = swBoot.clone();
+        swReset.position.set(54.18, 23.27, 4.4);
+        epaperGroup.add(swBoot, swReset);
+
+        // Factory M3 brass inserts on back of board
+        for (let xs of [-50.0, 50.0]) {
+            const brass = new THREE.Mesh(new THREE.CylinderGeometry(2.5, 2.5, 3.0, 16), new THREE.MeshStandardMaterial({ color: 0xd4af37, metalness: 0.9 }));
+            brass.rotation.x = Math.PI / 2;
+            brass.position.set(xs, 0.0, 4.5);
+            epaperGroup.add(brass);
+        }
+
+        registerLayer('epaperBoard', 'CrowPanel 5.79" E-Paper HMI Board', epaperGroup, 0.0, 1.10, {
+            dims: '167.92mm × 57.51mm × 12.0mm',
+            role: 'ESP32-S3 Dual-Core SoC, 8MB PSRAM, dual SSD1683 controllers, USB-C, MicroSD, 2 rear factory M3 brass inserts.',
+            material: 'Elecrow HMI Module Assembly'
+        });
+
+        // =========================================================================
+        // 3. Spring-Mode Mounting Bracket (Z = -1.5 to +6.5mm)
+        // =========================================================================
+        const bracketGroup = new THREE.Group();
+        // 4.0mm Base plate (Z = +1.0 to +5.0)
+        const brkBase = new THREE.Mesh(new THREE.BoxGeometry(167.0, 56.5, 4.0), matBracket);
+        brkBase.position.z = 3.0;
+        bracketGroup.add(brkBase);
+
+        // Perimeter box ribs & central 20mm cross-spine (Height = 2.5mm, Z = -1.5 to +1.0)
+        const brkSpine = new THREE.Mesh(new THREE.BoxGeometry(130.0, 20.0, 2.5), matBracket);
+        brkSpine.position.z = -0.25;
+        bracketGroup.add(brkSpine);
+
+        // 2x M3 factory screw bosses (dia 13mm, height 2.5mm)
+        for (let xs of [-50.0, 50.0]) {
+            const sboss = new THREE.Mesh(new THREE.CylinderGeometry(6.5, 6.5, 2.5, 24), matBracket);
+            sboss.rotation.x = Math.PI / 2;
+            sboss.position.set(xs, 0.0, -0.25);
+            bracketGroup.add(sboss);
+        }
+
+        // 4x Cantilever Spring Arms with 22×2.0mm Flexure Relief Slots & Raised Pinch Pads
+        // Top 2 Spring Latches (Y = +28.25mm)
+        for (let sx of [-28.0, 28.0]) {
+            // Spring Arm Beam (length 22mm, width 1.8mm, thickness 4.0mm)
+            const arm = new THREE.Mesh(new THREE.BoxGeometry(22.0, 1.8, 4.0), matBracket);
+            arm.position.set(sx, 27.35, 3.0);
+
+            // Open Flexure Slot (air gap isolating the beam)
+            const slot = new THREE.Mesh(new THREE.BoxGeometry(22.0, 2.0, 6.6), matSlotDark);
+            slot.position.set(sx, 25.35, 1.25);
+
+            // Outward Ramped Spring Tooth
+            const tooth = new THREE.Mesh(new THREE.BoxGeometry(8.0, 2.6, 3.5), matBracket);
+            tooth.position.set(sx, 28.90, 2.0);
+
+            // Raised Finger Pinch Release Pad (prominent green touch target)
+            const fpad = new THREE.Mesh(new THREE.BoxGeometry(8.0, 1.8, 2.0), matSpringPad);
+            fpad.position.set(sx, 27.35, 5.0);
+
+            bracketGroup.add(arm, slot, tooth, fpad);
+        }
+
+        // Bottom 2 Spring Latches (Y = -28.25mm)
+        for (let sx of [-12.0, 12.0]) {
+            const arm = new THREE.Mesh(new THREE.BoxGeometry(22.0, 1.8, 4.0), matBracket);
+            arm.position.set(sx, -27.35, 3.0);
+
+            const slot = new THREE.Mesh(new THREE.BoxGeometry(22.0, 2.0, 6.6), matSlotDark);
+            slot.position.set(sx, -25.35, 1.25);
+
+            const tooth = new THREE.Mesh(new THREE.BoxGeometry(8.0, 2.6, 3.5), matBracket);
+            tooth.position.set(sx, -28.90, 2.0);
+
+            const fpad = new THREE.Mesh(new THREE.BoxGeometry(8.0, 1.8, 2.0), matSpringPad);
+            fpad.position.set(sx, -27.35, 5.0);
+
+            bracketGroup.add(arm, slot, tooth, fpad);
+        }
+
+        // 2x Finger Lift Extraction Notches on Left & Right Ends
+        for (let ex of [-62.0, 62.0]) {
+            const lnotch = new THREE.Mesh(new THREE.BoxGeometry(8.0, 6.0, 2.2), matSlotDark);
+            lnotch.position.set(ex, 0.0, 5.0);
+            bracketGroup.add(lnotch);
+        }
+
+        registerLayer('mountingBracket', 'Spring-Mode Mounting Bracket', bracketGroup, 0.0, 0.55, {
+            dims: '167.0mm × 56.5mm × 6.5mm (Volume: 31,515 mm³)',
+            role: 'Compliant cantilever spring arms with 22mm flexure relief slots and raised pinch pads. Squeeze to release and take out instantly without tools or prying; clicks back in elastically!',
+            material: '3D Printed PLA / PETG (Emerald Green + Spring Latch)'
+        });
+
+        // =========================================================================
+        // 4. Dual 18650 Battery Bay (RIGHT HALF: X = 41.0mm, Y = -6.0mm)
+        // Resting at Z = -15.35mm (inside 25.8mm cavity, floor Z = -24.6mm)
+        // 100% enclosed, 7.3mm clear headroom, 0 outside projection!
+        // =========================================================================
+        const batteryGroup = new THREE.Group();
+        function create18650Cell(cy) {
+            const cg = new THREE.Group();
+            // Cyan foil wrapper body (Ø18.5mm × 65mm)
+            const body = new THREE.Mesh(new THREE.CylinderGeometry(9.25, 9.25, 65.0, 32), matBatteryCell);
+            body.rotation.z = Math.PI / 2;
+            // Positive button terminal (+X end)
+            const posTerm = new THREE.Mesh(new THREE.CylinderGeometry(3.5, 3.5, 2.2, 20), matScrew);
+            posTerm.rotation.z = Math.PI / 2;
+            posTerm.position.x = 33.1;
+            // Black insulator ring at positive end
+            const posRing = new THREE.Mesh(new THREE.RingGeometry(3.6, 9.2, 24), matBatteryRing);
+            posRing.rotation.y = Math.PI / 2;
+            posRing.position.x = 32.51;
+            // Negative flat terminal (-X end)
+            const negTerm = new THREE.Mesh(new THREE.CylinderGeometry(7.0, 7.0, 0.8, 20), matScrew);
+            negTerm.rotation.z = Math.PI / 2;
+            negTerm.position.x = -32.6;
+
+            cg.add(body, posTerm, posRing, negTerm);
+            cg.position.set(41.0, cy, -15.35);
+            return cg;
+        }
+
+        const cell1 = create18650Cell(-16.0);
+        const cell2 = create18650Cell(  4.0);
+        batteryGroup.add(cell1, cell2);
+
+        // Lead wires routing out through top cradle notch toward PCB
+        const wireCurveRed = new THREE.CatmullRomCurve3([
+            new THREE.Vector3(74.0, 4.0, -15.35),
+            new THREE.Vector3(76.0, 12.0, -12.0),
+            new THREE.Vector3(68.0, 16.0, -8.0),
+            new THREE.Vector3(56.0, 18.0, 2.0)
+        ]);
+        const wireGeomRed = new THREE.TubeGeometry(wireCurveRed, 24, 0.8, 8, false);
+        const wireMeshRed = new THREE.Mesh(wireGeomRed, new THREE.MeshStandardMaterial({ color: 0xef4444, roughness: 0.4 }));
+
+        const wireCurveBlack = new THREE.CatmullRomCurve3([
+            new THREE.Vector3(8.5, -16.0, -15.35),
+            new THREE.Vector3(6.0, -4.0, -12.0),
+            new THREE.Vector3(12.0, 14.0, -8.0),
+            new THREE.Vector3(52.0, 18.0, 2.0)
+        ]);
+        const wireGeomBlack = new THREE.TubeGeometry(wireCurveBlack, 28, 0.8, 8, false);
+        const wireMeshBlack = new THREE.Mesh(wireGeomBlack, new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.4 }));
+
+        batteryGroup.add(wireMeshRed, wireMeshBlack);
+        batteryGroup.position.set(0, 0, 0);
+
+        registerLayer('batteries', '2× 18650 Battery Bay (Deep Cavity)', batteryGroup, 0.0, -0.45, {
+            dims: '2× (Ø18.5mm × 65mm) Side-by-Side (~6000mAh)',
+            role: 'Resting deep inside the 25.8mm rear cavity with 7.3mm of clear headroom above cells! 100% enclosed with zero outside projection and zero speaker overlap.',
+            material: 'Li-Ion 3.7V Cells (Cyan Foil + Silicone Leads)'
+        });
+
+        // =========================================================================
+        // 5. MAX98357A I2S DAC Breakout (Far Left: X = -60.0mm, Y = 0.0mm)
+        // Resting on cavity floor at Z = -25.0mm
+        // =========================================================================
+        const ampGroup = new THREE.Group();
+        const ampPcb = new THREE.Mesh(new THREE.BoxGeometry(18.5, 20.5, 1.6), new THREE.MeshStandardMaterial({ color: 0x6a1b9a, roughness: 0.4 }));
+        ampPcb.position.set(-60.0, 0.0, -24.8);
+        const ampTerm = new THREE.Mesh(new THREE.BoxGeometry(7.0, 10.0, 8.5), new THREE.MeshStandardMaterial({ color: 0x1976d2 }));
+        ampTerm.position.set(-64.5, 0.0, -19.8);
+        const ampIc = new THREE.Mesh(new THREE.BoxGeometry(4.0, 4.0, 1.2), new THREE.MeshStandardMaterial({ color: 0x111111, metalness: 0.8 }));
+        ampIc.position.set(-58.0, 0.0, -23.4);
+        ampGroup.add(ampPcb, ampTerm, ampIc);
+        ampGroup.position.set(0, 0, 0);
+
+        registerLayer('amp', 'MAX98357A I2S Mono DAC/Amp', ampGroup, 0.0, -0.60, {
+            dims: '18.5mm × 20.5mm × 9.0mm',
+            role: 'Class-D 3.2W digital audio amplifier seated in far-left retention rails, wired to ESP32-S3 I2S bus.',
+            material: 'FR4 Purple Breakout PCB'
+        });
+
+        // =========================================================================
+        // 6. 40mm Round Speaker (Left-Center: X = -25.0mm, Y = 0.0mm)
+        // Resting in shallow 2.5mm rim against rear floor (Z = -25.8mm)
+        // =========================================================================
+        const speakerGroup = new THREE.Group();
+        // Cone (front rim at Z = -25.8, depth 8.0mm -> Z = -25.8 to -17.8)
+        const spkCone = new THREE.Mesh(new THREE.CylinderGeometry(20.0, 12.0, 8.0, 32), matSpeakerCone);
+        spkCone.rotation.x = Math.PI / 2;
+        spkCone.position.set(-25.0, 0.0, -21.8);
+        // Neodymium magnet (Z = -17.8 to -7.8)
+        const spkMag = new THREE.Mesh(new THREE.CylinderGeometry(11.0, 11.0, 10.0, 32), matSpeakerMagnet);
+        spkMag.rotation.x = Math.PI / 2;
+        spkMag.position.set(-25.0, 0.0, -12.8);
+        // Outer mounting ring flange
+        const spkFlange = new THREE.Mesh(new THREE.CylinderGeometry(20.2, 20.2, 1.5, 32), matScrew);
+        spkFlange.rotation.x = Math.PI / 2;
+        spkFlange.position.set(-25.0, 0.0, -25.05);
+        speakerGroup.add(spkCone, spkMag, spkFlange);
+        speakerGroup.position.set(0, 0, 0);
+
+        registerLayer('speaker', '40mm Round Speaker (Shallow Rim)', speakerGroup, 0.0, -0.75, {
+            dims: 'Ø40mm × 18mm Depth (4Ω 3W/5W)',
+            role: 'Drops into shallow 2.5mm retention rim on back door (no tall deep cup!) against concentric rear sound vents.',
+            material: 'Neodymium Magnet + Paper/Poly Cone'
+        });
+
+        // =========================================================================
+        // 7. Deep Rear Cabinet Housing (28.0mm Depth, 25.8mm Internal Cavity)
+        // Outer face at Z = -28.0mm, Cavity from Z = 0 to -25.8mm
+        // =========================================================================
+        const rearGroup = new THREE.Group();
+        // Solid back wall (thickness 2.2mm, Z = -25.8 to -28.0)
+        const rearBackMesh = new THREE.Mesh(new THREE.BoxGeometry(173.0, 62.5, 2.2), matCabinetDark);
+        rearBackMesh.position.z = -26.9;
+        rearGroup.add(rearBackMesh);
+
+        // Top Wall (depth 25.8mm, Z = 0 to -25.8)
+        const rTopWall = new THREE.Mesh(new THREE.BoxGeometry(173.0, 2.2, 25.8), matCabinetDark);
+        rTopWall.position.set(0, 30.15, -12.9);
+        // Bottom Wall with Port Openings
+        // Left section (X = -86.5 to +28.0 -> width 114.5)
+        const rBotWall1 = new THREE.Mesh(new THREE.BoxGeometry(114.5, 2.2, 25.8), matCabinetDark);
+        rBotWall1.position.set(-29.25, -30.15, -12.9);
+        // Middle post between USB-C and MicroSD (X = +42.0 to +56.0 -> width 14.0)
+        const rBotWall2 = new THREE.Mesh(new THREE.BoxGeometry(14.0, 2.2, 25.8), matCabinetDark);
+        rBotWall2.position.set(49.0, -30.15, -12.9);
+        // Right corner post (X = +72.0 to +86.5 -> width 14.5)
+        const rBotWall3 = new THREE.Mesh(new THREE.BoxGeometry(14.5, 2.2, 25.8), matCabinetDark);
+        rBotWall3.position.set(79.25, -30.15, -12.9);
+        // Left & Right Side Walls
+        const rLeftWall = new THREE.Mesh(new THREE.BoxGeometry(2.2, 58.1, 25.8), matCabinetDark);
+        rLeftWall.position.set(-85.4, 0, -12.9);
+        const rRightWall = new THREE.Mesh(new THREE.BoxGeometry(2.2, 58.1, 25.8), matCabinetDark);
+        rRightWall.position.set(85.4, 0, -12.9);
+        rearGroup.add(rTopWall, rBotWall1, rBotWall2, rBotWall3, rLeftWall, rRightWall);
+
+        // Shallow Speaker Rim on inside back floor (Height = 2.5mm, Z = -25.8 to -23.3)
+        const spkRimMesh = new THREE.Mesh(new THREE.CylinderGeometry(21.75, 21.75, 2.5, 32), matCabinetDark);
+        spkRimMesh.rotation.x = Math.PI / 2;
+        spkRimMesh.position.set(-25.0, 0.0, -24.55);
+        rearGroup.add(spkRimMesh);
+
+        // Acoustic Grille Rings on Back Face (Z = -28.05)
+        for (let gr of [4.0, 8.0, 12.0, 16.0, 19.0]) {
+            const grilleRing = new THREE.Mesh(new THREE.RingGeometry(gr - 0.75, gr, 32), matSlotDark);
+            grilleRing.position.set(-25.0, 0.0, -28.05);
+            rearGroup.add(grilleRing);
+        }
+
+        // Deep 72×40×9mm Battery Cradle Ribs (Z = -25.8 to -16.8)
+        // Outer perimeter cradle ribs with top wire exit notch
+        const batCradleLeft = new THREE.Mesh(new THREE.BoxGeometry(1.8, 40.0, 9.0), matCabinetDark);
+        batCradleLeft.position.set(5.0, -6.0, -21.3);
+        const batCradleRight = new THREE.Mesh(new THREE.BoxGeometry(1.8, 40.0, 9.0), matCabinetDark);
+        batCradleRight.position.set(77.0, -6.0, -21.3);
+        const batCradleBot = new THREE.Mesh(new THREE.BoxGeometry(72.0, 1.8, 9.0), matCabinetDark);
+        batCradleBot.position.set(41.0, -26.0, -21.3);
+        // Top rib with 12mm wire exit notch
+        const batCradleTop1 = new THREE.Mesh(new THREE.BoxGeometry(28.0, 1.8, 9.0), matCabinetDark);
+        batCradleTop1.position.set(21.0, 14.0, -21.3);
+        const batCradleTop2 = new THREE.Mesh(new THREE.BoxGeometry(28.0, 1.8, 9.0), matCabinetDark);
+        batCradleTop2.position.set(61.0, 14.0, -21.3);
+        // Central cell divider rib
+        const batDivider = new THREE.Mesh(new THREE.BoxGeometry(72.0, 1.8, 9.0), matCabinetDark);
+        batDivider.position.set(41.0, -6.0, -21.3);
+        rearGroup.add(batCradleLeft, batCradleRight, batCradleBot, batCradleTop1, batCradleTop2, batDivider);
+
+        // Rigid Button Guide Tubes (Height = 10mm, Z = -25.8 to -15.8)
+        for (let bx of [40.48, 54.18]) {
+            const bGuide = new THREE.Mesh(new THREE.CylinderGeometry(4.5, 4.5, 10.0, 24), matCabinetDark);
+            bGuide.rotation.x = Math.PI / 2;
+            bGuide.position.set(bx, 23.27, -20.8);
+            rearGroup.add(bGuide);
+        }
+
+        // Rear Button Recessed Wells on Back Face (Z = -28.05)
+        for (let bx of [40.48, 54.18]) {
+            const bWell = new THREE.Mesh(new THREE.RingGeometry(2.6, 4.0, 24), matSlotDark);
+            bWell.position.set(bx, 23.27, -28.05);
+            rearGroup.add(bWell);
+        }
+
+        // Dual Keyholes (X = -65.0mm & X = +68.0mm, Y = +14.0mm) - Non-Merging!
+        for (let kx of [-65.0, 68.0]) {
+            const khRound = new THREE.Mesh(new THREE.CircleGeometry(3.8, 24), matSlotDark);
+            khRound.position.set(kx, 14.0, -28.05);
+            const khSlot = new THREE.Mesh(new THREE.PlaneGeometry(4.2, 6.0), matSlotDark);
+            khSlot.position.set(kx, 17.0, -28.05);
+            rearGroup.add(khRound, khSlot);
+        }
+
+        // 4x Corner Countersunk Screw Holes (Flush with Back Face)
+        for (let mx of [-1, 1]) {
+            for (let my of [-1, 1]) {
+                const cScrewHole = new THREE.Mesh(new THREE.RingGeometry(1.6, 3.2, 24), matSlotDark);
+                cScrewHole.position.set(mx * 82.0, my * 26.75, -28.05);
+                rearGroup.add(cScrewHole);
+            }
+        }
+
+        registerLayer('rearCabinet', 'Deep Rear Cabinet (28mm)', rearGroup, 0.0, -1.25, {
+            dims: '173.0mm × 62.5mm × 28.0mm (Cavity: 25.8mm)',
+            role: 'Deepened to 28mm to provide 25.8mm internal cavity. Features 72×40mm battery cradle with 7.3mm clear headroom, shallow 2.5mm speaker rim, rigid button guide tubes, USB-C/MicroSD port cutouts, and 4 corner screws.',
+            material: '3D Printed PLA / PETG (Matte Charcoal)'
+        });
+
+        // =========================================================================
+        // 8. Captive Push-Button Plungers (Boot & Reset - Extended Stiff Stems)
+        // Cap flush at Z = -27.5mm, Tip reaching switch at Z = -4.75mm
+        // =========================================================================
+        const btnGroup = new THREE.Group();
+        function createRearBtnMesh(mat, xPos) {
+            const bg = new THREE.Group();
+            // Cap in recessed well (Z = -27.5)
+            const cap = new THREE.Mesh(new THREE.CylinderGeometry(2.3, 2.3, 2.2, 24), mat);
+            cap.rotation.x = Math.PI / 2;
+            cap.position.set(xPos, 23.27, -27.5);
+            // Retaining flange against inside back wall (Z = -25.0)
+            const flange = new THREE.Mesh(new THREE.CylinderGeometry(3.4, 3.4, 1.5, 24), mat);
+            flange.rotation.x = Math.PI / 2;
+            flange.position.set(xPos, 23.27, -25.0);
+            // Stiff guide stem (dia 3.6mm, length 16mm, Z = -23.5 to -7.5)
+            const stem = new THREE.Mesh(new THREE.CylinderGeometry(1.8, 1.8, 16.0, 16), mat);
+            stem.rotation.x = Math.PI / 2;
+            stem.position.set(xPos, 23.27, -15.5);
+            // Switch contact tip (dia 2.2mm, length 5.5mm, Z = -7.5 to -2.0)
+            const tip = new THREE.Mesh(new THREE.CylinderGeometry(1.1, 1.1, 5.5, 16), mat);
+            tip.rotation.x = Math.PI / 2;
+            tip.position.set(xPos, 23.27, -4.75);
+
+            bg.add(cap, flange, stem, tip);
+            return bg;
+        }
+
+        const bBoot = createRearBtnMesh(matButtonBoot, 40.48);
+        const bReset = createRearBtnMesh(matButtonReset, 54.18);
+        btnGroup.add(bBoot, bReset);
+        btnGroup.position.set(0, 0, 0);
+
+        registerLayer('buttons', 'Rear BOOT & RESET Push Buttons', btnGroup, 0.0, -1.65, {
+            dims: 'Ø4.6mm Cap × 25.2mm Length',
+            role: 'Captive plungers with rigid 16mm guide stems and 5.5mm contact tips, actuated directly through internal guide tubes into onboard K1/K2 microswitches.',
+            material: '3D Printed PLA (Orange/Cyan Accent)'
+        });
+
+        // =========================================================================
+        // Explosion Controller & Controls
+        // =========================================================================
+        let explosionProgress = 0.0;
+        let isAutoExploding = false;
+        let isTurntable = false;
+        let isXray = false;
+        let autoDirection = 1;
+
+        const explodeSlider = document.getElementById('explodeSlider');
+        const explodeVal = document.getElementById('explodeVal');
+        const btnAutoExplode = document.getElementById('btnAutoExplode');
+        const btnXray = document.getElementById('btnXray');
+        const btnRotate = document.getElementById('btnRotate');
+
+        function updateExplosion(val) {
+            explosionProgress = val;
+            explodeSlider.value = Math.round(val * 100);
+            explodeVal.textContent = Math.round(val * 100) + '%';
+            const maxSpacing = 50.0;
+            assemblyLayers.forEach(layer => {
+                const targetZ = layer.baseZ + layer.multiplier * maxSpacing * explosionProgress;
+                layer.object.position.z = targetZ;
+            });
+        }
+
+        explodeSlider.addEventListener('input', (e) => {
+            isAutoExploding = false;
+            btnAutoExplode.classList.remove('active');
+            updateExplosion(parseFloat(e.target.value) / 100.0);
+        });
+
+        btnAutoExplode.addEventListener('click', () => {
+            isAutoExploding = !isAutoExploding;
+            btnAutoExplode.classList.toggle('active', isAutoExploding);
+        });
+
+        btnRotate.addEventListener('click', () => {
+            isTurntable = !isTurntable;
+            btnRotate.classList.toggle('active', isTurntable);
+        });
+
+        btnXray.addEventListener('click', () => {
+            isXray = !isXray;
+            btnXray.classList.toggle('active', isXray);
+            [matBezelWhite, matBracket, matCabinetDark].forEach(mat => {
+                mat.transparent = isXray;
+                mat.opacity = isXray ? 0.35 : 1.0;
+            });
+        });
+
+        function setCameraView(pos, target, btnId) {
+            document.querySelectorAll('.cam-btn').forEach(b => b.classList.remove('active'));
+            if (btnId) document.getElementById(btnId).classList.add('active');
+            const startPos = camera.position.clone();
+            const startTarget = controls.target.clone();
+            let t = 0;
+            function animCam() {
+                t += 0.05;
+                camera.position.lerpVectors(startPos, pos, t);
+                controls.target.lerpVectors(startTarget, target, t);
+                if (t < 1.0) requestAnimationFrame(animCam);
+            }
+            animCam();
+        }
+
+        document.getElementById('viewIso').addEventListener('click', () => {
+            setCameraView(new THREE.Vector3(110, 75, 190), new THREE.Vector3(0, 0, 0), 'viewIso');
+        });
+        document.getElementById('viewFront').addEventListener('click', () => {
+            setCameraView(new THREE.Vector3(0, 0, 220), new THREE.Vector3(0, 0, 0), 'viewFront');
+        });
+        document.getElementById('viewBack').addEventListener('click', () => {
+            setCameraView(new THREE.Vector3(0, 0, -230), new THREE.Vector3(0, 0, -10), 'viewBack');
+        });
+        document.getElementById('viewPorts').addEventListener('click', () => {
+            setCameraView(new THREE.Vector3(30, -150, 40), new THREE.Vector3(30, -15, 0), 'viewPorts');
+        });
+        document.getElementById('viewSection').addEventListener('click', () => {
+            setCameraView(new THREE.Vector3(180, 20, 30), new THREE.Vector3(0, 0, 0), 'viewSection');
+        });
+        document.getElementById('viewSpring').addEventListener('click', () => {
+            if (explosionProgress < 0.35) {
+                updateExplosion(0.40);
+            }
+            setCameraView(new THREE.Vector3(40, 65, 75), new THREE.Vector3(28, 26, 6), 'viewSpring');
+            selectLayer('mountingBracket');
+        });
+
+        const detailCard = document.getElementById('detailCard');
+        const cardTitle = document.getElementById('cardTitle');
+        const cardDesc = document.getElementById('cardDesc');
+        const cardSpecs = document.getElementById('cardSpecs');
+
+        function selectLayer(id) {
+            document.querySelectorAll('.part-item').forEach(el => {
+                el.classList.toggle('selected', el.getAttribute('data-id') === id);
+            });
+            const layer = assemblyLayers.find(l => l.id === id);
+            if (!layer) return;
+            detailCard.style.display = 'block';
+            cardTitle.textContent = layer.name;
+            cardDesc.textContent = layer.info.role;
+            cardSpecs.innerHTML = `<strong>DIMENSIONS:</strong> ${layer.info.dims}<br><strong>MATERIAL:</strong> ${layer.info.material}`;
+        }
+
+        document.querySelectorAll('.part-item').forEach(item => {
+            item.addEventListener('click', () => selectLayer(item.getAttribute('data-id')));
+        });
+
+        // Interactive 3D Canvas Click Selection (Raycasting)
+        const raycaster = new THREE.Raycaster();
+        const mouse = new THREE.Vector2();
+
+        window.addEventListener('pointerdown', (e) => {
+            // Ignore clicks on UI overlays
+            if (e.target.closest('header') || e.target.closest('.camera-views') || e.target.closest('.parts-sidebar') || e.target.closest('.control-dock') || e.target.closest('#detailCard')) {
+                return;
+            }
+            mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
+            mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
+            raycaster.setFromCamera(mouse, camera);
+
+            for (let layer of assemblyLayers) {
+                const hits = raycaster.intersectObjects(layer.object.children, true);
+                if (hits.length > 0) {
+                    selectLayer(layer.id);
+                    break;
+                }
+            }
+        });
+
+        // Initialize at 0% closed view
+        updateExplosion(0.0);
+        selectLayer('frontBezel');
+
+        const clock = new THREE.Clock();
+        function animate() {
+            requestAnimationFrame(animate);
+            const delta = clock.getDelta();
+            if (isAutoExploding) {
+                explosionProgress += autoDirection * delta * 0.30;
+                if (explosionProgress >= 1.0) { explosionProgress = 1.0; autoDirection = -1; }
+                else if (explosionProgress <= 0.0) { explosionProgress = 0.0; autoDirection = 1; }
+                updateExplosion(explosionProgress);
+            }
+            if (isTurntable) partsGroup.rotation.y += delta * 0.40;
+            else partsGroup.rotation.y = 0;
+            controls.update();
+            renderer.render(scene, camera);
+        }
+        animate();
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+    </script>
+</body>
+</html>
