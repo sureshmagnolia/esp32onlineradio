@@ -165,9 +165,9 @@ table.fav-table th{color:#8b949e;font-weight:600;font-size:11px;text-transform:u
 <div class="box">
   <div style="font-weight:600;color:#58a6ff;font-size:16px;margin-bottom:4px;text-align:left;">🌐 Master Online Catalog (GitHub)</div>
   <div style="font-size:12px;color:#8b949e;text-align:left;margin-bottom:8px;">
-    Live 600+ station directory. Search or filter by language and category. Tap <b style="color:#2ea043;">[▶ Play]</b> to listen immediately, or <b style="color:#ffd54f;">[⭐ Add]</b> to save into favorites.
+    Live 5,700+ station directory. Search or filter by language and category. Tap <b style="color:#2ea043;">[▶ Play]</b> to listen immediately, or <b style="color:#ffd54f;">[⭐ Add]</b> to save into favorites.
   </div>
-  <input type="text" id="catSearch" placeholder="🔍 Search 600+ stations by name, city, state, language, genre..." oninput="filterCatalog()">
+  <input type="text" id="catSearch" placeholder="🔍 Search 5,700+ stations by name, city, state, language, genre..." oninput="filterCatalog()">
   
   <div style="font-size:11px;color:#8b949e;text-align:left;margin-top:6px;font-weight:600;">LANGUAGES:</div>
   <div class="pills" id="catPills" style="margin:4px 0 6px;">
@@ -224,8 +224,10 @@ table.fav-table th{color:#8b949e;font-weight:600;font-size:11px;text-transform:u
 
 <script>
 const CATALOG_URLS = [
-  "https://raw.githubusercontent.com/sureshmagnolia/esp32onlineradio/waveshare28-stereo-radio/stations.json",
+  "https://raw.githubusercontent.com/sureshmagnolia/esp32onlineradio/main/Common/data/stations.json",
   "https://raw.githubusercontent.com/sureshmagnolia/esp32onlineradio/main/stations.json",
+  "https://raw.githubusercontent.com/sureshmagnolia/esp32onlineradio/CrowPanel-5.79-EPaper/Common/data/stations.json",
+  "https://raw.githubusercontent.com/sureshmagnolia/esp32onlineradio/waveshare28-stereo-radio/stations.json",
   "https://raw.githubusercontent.com/sureshmagnolia/ESP32-SI4732-Radio/main/stations.json"
 ];
 let deviceFavorites = [];
@@ -421,7 +423,7 @@ function renderCatalog(){
   let c = document.getElementById('catContainer');
   let cntElem = document.getElementById('catCount');
   if(!onlineCatalog || onlineCatalog.length === 0){
-    c.innerHTML = '<div style="padding:20px;text-align:center;color:#8b949e;">Loading 600+ online stations...</div>';
+    c.innerHTML = '<div style="padding:20px;text-align:center;color:#8b949e;">Loading 5,700+ online stations...</div>';
     if(cntElem) cntElem.innerText = '0';
     return;
   }
@@ -451,7 +453,8 @@ function renderCatalog(){
   }
 
   let html = '';
-  filtered.forEach(st => {
+  let displayList = filtered.slice(0, 300);
+  displayList.forEach(st => {
     let saved = isStationInFavorites(st);
     let lang = st.lang || st.language || 'Radio';
     let isAir = (st.cat && st.cat.toLowerCase() === 'air') || 
@@ -478,6 +481,9 @@ function renderCatalog(){
     html += '  </div>';
     html += '</div>';
   });
+  if (filtered.length > 300) {
+    html += '<div style="padding:12px;text-align:center;color:#8b949e;font-size:12px;">Showing first 300 of ' + filtered.length + ' stations. Refine search or filter by language/category above.</div>';
+  }
   c.innerHTML = html;
 }
 
