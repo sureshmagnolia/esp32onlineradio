@@ -92,7 +92,10 @@ out_lines.append('#endif // _STATIONS_DB_H_')
 # Write output to available board targets or Common/data
 targets = [
     os.path.join(PROJECT_ROOT, "Common", "data", "stations_db.h"),
-    os.path.join(PROJECT_ROOT, "Boards", "JC3248W535_3.5_Touch", "ESP32S3_JC3248W535_Radio_fixed", "stations_db.h")
+    os.path.join(PROJECT_ROOT, "Boards", "JC3248W535_3.5_Touch", "ESP32S3_JC3248W535_Radio_fixed", "stations_db.h"),
+    os.path.join(PROJECT_ROOT, "Boards", "JC3248W535_3.5_Touch", "ESP32S3_JC3248W535_Radio_MP3OK", "stations_db.h"),
+    os.path.join(PROJECT_ROOT, "Boards", "JC3248W535_3.5_Touch", "ESP32S3_JC3248W535_Radio_OK_Version", "stations_db.h"),
+    os.path.join(PROJECT_ROOT, "Boards", "ATS_Mini_SI4732", "2_Hybrid_SI4732_WebRadio", "ats-mini", "stations_db.h"),
 ]
 
 for target in targets:
